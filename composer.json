@@ -1,0 +1,28 @@
+{
+    "name": "vizuall/color-scheme",
+    "description": "Vizuall Color Scheme fieldtypes and color utilities",
+    "type": "statamic-addon",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.2",
+        "statamic/cms": "^6.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Vizuall\\ColorScheme\\": "src/"
+        }
+    },
+    "extra": {
+        "statamic": {
+            "name": "Vizuall Color Scheme",
+            "provider": "Vizuall\\ColorScheme\\AddonServiceProvider"
+        },
+        "laravel": {
+            "providers": [
+                "Vizuall\\ColorScheme\\AddonServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

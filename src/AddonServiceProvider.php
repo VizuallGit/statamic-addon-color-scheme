@@ -1,0 +1,34 @@
+<?php
+
+namespace Vizuall\ColorScheme;
+
+use Statamic\Providers\AddonServiceProvider as BaseAddonServiceProvider;
+use Statamic\Statamic;
+use Statamic\Modifiers\Modifier;
+
+class AddonServiceProvider extends BaseAddonServiceProvider
+{
+    protected $fieldtypes = [
+        Fieldtypes\ColorSchemeSelector::class,
+        Fieldtypes\ColorSchemePreview::class,
+        Fieldtypes\ThemeColorPicker::class,
+        Fieldtypes\ButtonPreview::class,
+    ];
+
+    protected $scripts = [
+        __DIR__.'/../resources/js/addon.js',
+    ];
+
+    public function bootAddon(): void
+    {
+        Modifier::register('contrast_color', Modifiers\ContrastColor::class);
+
+        Statamic::booted(function () {
+            $swatches = Fieldtypes\ThemeColorPicker::buildSwatches();
+            Statamic::provideToScript(['bard-color-picker' => [
+                'swatches'  => $swatches,
+                'allow_any' => true,
+            ]]);
+        });
+    }
+}
