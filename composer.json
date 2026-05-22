@@ -1,5 +1,5 @@
 {
-    "name": "vizuall/color-scheme",
+    "name": "statamic-addon/color-scheme",
     "description": "Vizuall Color Scheme fieldtypes and color utilities",
     "type": "statamic-addon",
     "license": "proprietary",
