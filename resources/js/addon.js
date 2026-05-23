@@ -89,11 +89,11 @@
                     if (publishContext) {
                         const vals = getPublishValues(publishContext);
                         const palette = [];
-                        for (const key of ['primary_color', 'secondary_color', 'tertiary_color']) {
+                        for (const key of ['primary_color', 'secondary_color', 'tertiary_color', 'quaternary_color']) {
                             if (vals[key]) palette.push(...hexPalette(vals[key]));
                         }
                         if (!palette.length) return props.meta.swatches || [];
-                        const tintKey = { from_primary: 'primary_color', from_secondary: 'secondary_color', from_tertiary: 'tertiary_color' }[vals.neutral_color];
+                        const tintKey = { from_primary: 'primary_color', from_secondary: 'secondary_color', from_tertiary: 'tertiary_color', from_quaternary: 'quaternary_color' }[vals.neutral_color];
                         palette.push(...neutralScale(tintKey ? vals[tintKey] : null));
                         return palette;
                     }
