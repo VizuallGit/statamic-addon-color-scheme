@@ -39,7 +39,7 @@ class ThemeColorPicker extends Fieldtype
 
             $swatches = [];
 
-            foreach (['primary_color', 'secondary_color', 'tertiary_color'] as $key) {
+            foreach (['primary_color', 'secondary_color', 'tertiary_color', 'quaternary_color'] as $key) {
                 if ($hex = $variables->get($key)) {
                     array_push($swatches, ...static::palette($hex));
                 }
@@ -48,8 +48,9 @@ class ThemeColorPicker extends Fieldtype
             $tintHex = match ($variables->get('neutral_color')) {
                 'from_primary'   => $variables->get('primary_color'),
                 'from_secondary' => $variables->get('secondary_color'),
-                'from_tertiary'  => $variables->get('tertiary_color'),
-                default          => null,
+                'from_tertiary'   => $variables->get('tertiary_color'),
+                'from_quaternary' => $variables->get('quaternary_color'),
+                default           => null,
             };
 
             array_push($swatches, ...static::neutralScale($tintHex));
