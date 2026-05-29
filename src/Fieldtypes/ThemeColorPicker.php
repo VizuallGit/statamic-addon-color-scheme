@@ -24,7 +24,38 @@ class ThemeColorPicker extends Fieldtype
 
     public function preload(): array
     {
-        return ['swatches' => static::buildSwatches()];
+        return [
+            'swatches'  => static::buildSwatches(),
+            'overrides' => static::buildOverrides(),
+        ];
+    }
+
+    public static function buildOverrides(): array
+    {
+        try {
+            $global = GlobalSet::findByHandle('theme_settings');
+            if (!$global) return [];
+            $variables = $global->in(Site::default()->handle());
+            if (!$variables) return [];
+
+            $overrides = [];
+            foreach ([
+                ['key' => 'primary_color',    'toggle' => 'control_primary_tones',    'glare' => 'primary_glare_color',    'shade' => 'primary_shade_color'],
+                ['key' => 'secondary_color',  'toggle' => 'control_secondary_tones',  'glare' => 'secondary_glare_color',  'shade' => 'secondary_shade_color'],
+                ['key' => 'tertiary_color',   'toggle' => 'control_tertiary_tones',   'glare' => 'tertiary_glare_color',   'shade' => 'tertiary_shade_color'],
+                ['key' => 'quaternary_color', 'toggle' => 'control_quaternary_tones', 'glare' => 'quaternary_glare_color', 'shade' => 'quaternary_shade_color'],
+            ] as $meta) {
+                if (!$variables->get($meta['toggle'])) continue;
+                $glare = $variables->get($meta['glare']);
+                $shade = $variables->get($meta['shade']);
+                if ($glare || $shade) {
+                    $overrides[$meta['key']] = ['glare' => $glare, 'shade' => $shade];
+                }
+            }
+            return $overrides;
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     public static function buildSwatches(): array
@@ -39,15 +70,25 @@ class ThemeColorPicker extends Fieldtype
 
             $swatches = [];
 
-            foreach (['primary_color', 'secondary_color', 'tertiary_color', 'quaternary_color'] as $key) {
-                if ($hex = $variables->get($key)) {
-                    array_push($swatches, ...static::palette($hex));
-                }
+            $colorMeta = [
+                ['key' => 'primary_color',    'toggle' => 'control_primary_tones',    'glare' => 'primary_glare_color',    'shade' => 'primary_shade_color'],
+                ['key' => 'secondary_color',  'toggle' => 'control_secondary_tones',  'glare' => 'secondary_glare_color',  'shade' => 'secondary_shade_color'],
+                ['key' => 'tertiary_color',   'toggle' => 'control_tertiary_tones',   'glare' => 'tertiary_glare_color',   'shade' => 'tertiary_shade_color'],
+                ['key' => 'quaternary_color', 'toggle' => 'control_quaternary_tones', 'glare' => 'quaternary_glare_color', 'shade' => 'quaternary_shade_color'],
+            ];
+
+            foreach ($colorMeta as $meta) {
+                if (!($hex = $variables->get($meta['key']))) continue;
+                [$autoGlare, $base, $autoShade] = static::palette($hex);
+                $controlled = $variables->get($meta['toggle']);
+                $swatches[] = ($controlled && $variables->get($meta['glare'])) ? $variables->get($meta['glare']) : $autoGlare;
+                $swatches[] = $base;
+                $swatches[] = ($controlled && $variables->get($meta['shade'])) ? $variables->get($meta['shade']) : $autoShade;
             }
 
             $tintHex = match ($variables->get('neutral_color')) {
-                'from_primary'   => $variables->get('primary_color'),
-                'from_secondary' => $variables->get('secondary_color'),
+                'from_primary'    => $variables->get('primary_color'),
+                'from_secondary'  => $variables->get('secondary_color'),
                 'from_tertiary'   => $variables->get('tertiary_color'),
                 'from_quaternary' => $variables->get('quaternary_color'),
                 default           => null,
