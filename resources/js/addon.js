@@ -85,12 +85,30 @@
             setup(props, { emit, attrs }) {
                 const publishContext = usePublishContext();
 
+                const colorOverrides = [
+                    { key: 'primary_color',    toggle: 'control_primary_tones',    glare: 'primary_glare_color',    shade: 'primary_shade_color' },
+                    { key: 'secondary_color',  toggle: 'control_secondary_tones',  glare: 'secondary_glare_color',  shade: 'secondary_shade_color' },
+                    { key: 'tertiary_color',   toggle: 'control_tertiary_tones',   glare: 'tertiary_glare_color',   shade: 'tertiary_shade_color' },
+                    { key: 'quaternary_color', toggle: 'control_quaternary_tones', glare: 'quaternary_glare_color', shade: 'quaternary_shade_color' },
+                ];
+
                 const liveSwatches = computed(() => {
                     if (publishContext) {
                         const vals = getPublishValues(publishContext);
+                        const phpOverrides = props.meta.overrides ?? {};
                         const palette = [];
-                        for (const key of ['primary_color', 'secondary_color', 'tertiary_color', 'quaternary_color']) {
-                            if (vals[key]) palette.push(...hexPalette(vals[key]));
+                        for (const { key, toggle, glare: glareKey, shade: shadeKey } of colorOverrides) {
+                            if (!vals[key]) continue;
+                            const [autoGlare, base, autoShade] = hexPalette(vals[key]);
+                            const phpOvr = phpOverrides[key];
+                            const liveControlled = vals[toggle];
+                            const glare = (liveControlled && vals[glareKey])
+                                ? vals[glareKey]
+                                : (phpOvr?.glare ?? autoGlare);
+                            const shade = (liveControlled && vals[shadeKey])
+                                ? vals[shadeKey]
+                                : (phpOvr?.shade ?? autoShade);
+                            palette.push(glare, base, shade);
                         }
                         if (!palette.length) return props.meta.swatches || [];
                         const tintKey = { from_primary: 'primary_color', from_secondary: 'secondary_color', from_tertiary: 'tertiary_color', from_quaternary: 'quaternary_color' }[vals.neutral_color];
@@ -108,6 +126,29 @@
                         emit('update:value', newSwatches[idx]);
                     }
                 });
+
+                const autofillMap = {
+                    'primary_glare_color':    { toggle: 'control_primary_tones',    base: 'primary_color',    isGlare: true },
+                    'primary_shade_color':    { toggle: 'control_primary_tones',    base: 'primary_color',    isGlare: false },
+                    'secondary_glare_color':  { toggle: 'control_secondary_tones',  base: 'secondary_color',  isGlare: true },
+                    'secondary_shade_color':  { toggle: 'control_secondary_tones',  base: 'secondary_color',  isGlare: false },
+                    'tertiary_glare_color':   { toggle: 'control_tertiary_tones',   base: 'tertiary_color',   isGlare: true },
+                    'tertiary_shade_color':   { toggle: 'control_tertiary_tones',   base: 'tertiary_color',   isGlare: false },
+                    'quaternary_glare_color': { toggle: 'control_quaternary_tones', base: 'quaternary_color', isGlare: true },
+                    'quaternary_shade_color': { toggle: 'control_quaternary_tones', base: 'quaternary_color', isGlare: false },
+                };
+                const autofill = autofillMap[attrs.name ?? props.config?.handle];
+                if (autofill && publishContext) {
+                    onMounted(() => {
+                        if (!props.value) {
+                            const baseHex = getPublishValues(publishContext)[autofill.base];
+                            if (baseHex) {
+                                const [glare, , shade] = hexPalette(baseHex);
+                                emit('update:value', autofill.isGlare ? glare : shade);
+                            }
+                        }
+                    });
+                }
 
                 return () => {
                     const ColorFieldtype = resolveComponent('color-fieldtype');
