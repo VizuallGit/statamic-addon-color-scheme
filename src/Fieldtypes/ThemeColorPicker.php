@@ -65,15 +65,7 @@ class ThemeColorPicker extends Fieldtype
                 array_push($swatches, ...static::scale($hex, $bias));
             }
 
-            $tintHex = match ($variables->get('neutral_color')) {
-                'from_primary'    => $variables->get('primary_color'),
-                'from_secondary'  => $variables->get('secondary_color'),
-                'from_tertiary'   => $variables->get('tertiary_color'),
-                'from_quaternary' => $variables->get('quaternary_color'),
-                default           => null,
-            };
-
-            array_push($swatches, ...static::neutralScale($tintHex));
+            array_push($swatches, ...static::neutralScale());
 
             return static::$cachedSwatches = $swatches;
         } catch (\Throwable) {
@@ -81,17 +73,9 @@ class ThemeColorPicker extends Fieldtype
         }
     }
 
-    private static function neutralScale(?string $tintHex): array
+    private static function neutralScale(): array
     {
-        if (!$tintHex) return self::GRAY_STEPS;
-
-        [, $pC, $pH] = static::hexToOklch($tintHex);
-        $chroma = min($pC * 0.3, 0.025);
-
-        return array_map(function (string $gray) use ($chroma, $pH) {
-            [$gL] = static::hexToOklch($gray);
-            return static::oklchToHex($gL, $chroma, $pH);
-        }, self::GRAY_STEPS);
+        return self::GRAY_STEPS;
     }
 
     private static function hexToOklch(string $hex): array

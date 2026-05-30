@@ -65,14 +65,8 @@
             });
         }
 
-        function neutralScale(tintHex) {
-            if (!tintHex) return GRAY_STEPS;
-            const [, pC, pH] = hexToOklch(tintHex);
-            const chroma = Math.min(pC * 0.3, 0.025);
-            return GRAY_STEPS.map(gray => {
-                const [gL] = hexToOklch(gray);
-                return oklchToHex(gL, chroma, pH);
-            });
+        function neutralScale() {
+            return GRAY_STEPS;
         }
 
         Statamic.$components.register('theme-color-picker-fieldtype', {
@@ -103,8 +97,7 @@
                             palette.push(...hexScale(vals[key], bias));
                         }
                         if (!palette.length) return props.meta.swatches || [];
-                        const tintKey = { from_primary: 'primary_color', from_secondary: 'secondary_color', from_tertiary: 'tertiary_color', from_quaternary: 'quaternary_color' }[vals.neutral_color];
-                        palette.push(...neutralScale(tintKey ? vals[tintKey] : null));
+                        palette.push(...neutralScale());
                         return palette;
                     }
                     return props.meta.swatches || [];
