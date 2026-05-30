@@ -12,6 +12,7 @@ class AddonServiceProvider extends BaseAddonServiceProvider
         Fieldtypes\ColorSchemeSelector::class,
         Fieldtypes\ColorSchemePreview::class,
         Fieldtypes\ThemeColorPicker::class,
+        Fieldtypes\ThemeColorScalePreview::class,
         Fieldtypes\ButtonPreview::class,
     ];
 

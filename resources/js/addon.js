@@ -81,20 +81,19 @@
                 const publishContext = usePublishContext();
 
                 const colorData = [
-                    { key: 'primary_color',    toggle: 'control_primary_tones',    biasKey: 'primary_tones_bias' },
-                    { key: 'secondary_color',  toggle: 'control_secondary_tones',  biasKey: 'secondary_tones_bias' },
-                    { key: 'tertiary_color',   toggle: 'control_tertiary_tones',   biasKey: 'tertiary_tones_bias' },
-                    { key: 'quaternary_color', toggle: 'control_quaternary_tones', biasKey: 'quaternary_tones_bias' },
+                    { key: 'primary_color',    biasKey: 'primary_tones_bias' },
+                    { key: 'secondary_color',  biasKey: 'secondary_tones_bias' },
+                    { key: 'tertiary_color',   biasKey: 'tertiary_tones_bias' },
+                    { key: 'quaternary_color', biasKey: 'quaternary_tones_bias' },
                 ];
 
                 const liveSwatches = computed(() => {
                     if (publishContext) {
                         const vals = getPublishValues(publishContext);
                         const palette = [];
-                        for (const { key, toggle, biasKey } of colorData) {
+                        for (const { key, biasKey } of colorData) {
                             if (!vals[key]) continue;
-                            const bias = vals[toggle] ? (vals[biasKey] ?? 0) : 0;
-                            palette.push(...hexScale(vals[key], bias));
+                            palette.push(...hexScale(vals[key], vals[biasKey] ?? 0));
                         }
                         if (!palette.length) return props.meta.swatches || [];
                         palette.push(...neutralScale());
@@ -124,6 +123,39 @@
                         onFocus: () => emit('focus'),
                         onBlur:  () => emit('blur'),
                     });
+                };
+            },
+        });
+
+        Statamic.$components.register('theme-color-scale-preview-fieldtype', {
+            props: {
+                value:  { default: null },
+                meta:   { type: Object, default: () => ({}) },
+                config: { type: Object, default: () => ({}) },
+            },
+            setup(props) {
+                const publishContext = usePublishContext();
+                const STEP_LABELS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+
+                const scale = computed(() => {
+                    const vals = publishContext ? getPublishValues(publishContext) : {};
+                    const hex = vals[props.config.base_color ?? 'primary_color'];
+                    if (!hex) return [];
+                    const bias = vals[props.config.bias_field ?? 'primary_tones_bias'] ?? 0;
+                    return hexScale(hex, bias).map((color, i) => ({ step: STEP_LABELS[i], color }));
+                });
+
+                return () => {
+                    if (!scale.value.length) return null;
+                    return h('div', { style: 'display:flex;gap:5px;padding:10px 0 6px;' },
+                        scale.value.map(({ step, color }) =>
+                            h('div', { style: 'flex:1;min-width:0;text-align:center;' }, [
+                                h('div', { style: `background:${color};border-radius:7px;aspect-ratio:3/4;margin-bottom:5px;` }),
+                                h('div', { style: 'font-size:11px;font-weight:600;color:#9ca3af;' }, String(step)),
+                                h('div', { style: 'font-size:9px;color:#6b7280;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' }, color.slice(1).toUpperCase()),
+                            ])
+                        )
+                    );
                 };
             },
         });

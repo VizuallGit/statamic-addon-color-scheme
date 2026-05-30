@@ -60,8 +60,7 @@ class ThemeColorPicker extends Fieldtype
                 ['color' => 'quaternary_color', 'bias' => 'quaternary_tones_bias'],
             ] as $meta) {
                 if (!($hex = $variables->get($meta['color']))) continue;
-                $controlled = $variables->get(str_replace('_color', '_tones', $meta['color']));
-                $bias = $controlled ? (int) ($variables->get($meta['bias']) ?? 0) : 0;
+                $bias = (int) ($variables->get($meta['bias']) ?? 0);
                 array_push($swatches, ...static::scale($hex, $bias));
             }
 

@@ -14,10 +14,10 @@ class ThemeColorScale extends Tags
     private const STEP_NAMES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
     private const COLORS = [
-        ['name' => 'primary',    'color' => 'primary_color',    'toggle' => 'control_primary_tones',    'bias' => 'primary_tones_bias'],
-        ['name' => 'secondary',  'color' => 'secondary_color',  'toggle' => 'control_secondary_tones',  'bias' => 'secondary_tones_bias'],
-        ['name' => 'tertiary',   'color' => 'tertiary_color',   'toggle' => 'control_tertiary_tones',   'bias' => 'tertiary_tones_bias'],
-        ['name' => 'quaternary', 'color' => 'quaternary_color', 'toggle' => 'control_quaternary_tones', 'bias' => 'quaternary_tones_bias'],
+        ['name' => 'primary',    'color' => 'primary_color',    'bias' => 'primary_tones_bias'],
+        ['name' => 'secondary',  'color' => 'secondary_color',  'bias' => 'secondary_tones_bias'],
+        ['name' => 'tertiary',   'color' => 'tertiary_color',   'bias' => 'tertiary_tones_bias'],
+        ['name' => 'quaternary', 'color' => 'quaternary_color', 'bias' => 'quaternary_tones_bias'],
     ];
 
     public function index(): string
@@ -34,8 +34,7 @@ class ThemeColorScale extends Tags
                 $hex = $vars->get($meta['color']);
                 if (!$hex) continue;
 
-                $controlled = $vars->get($meta['toggle']);
-                $bias = $controlled ? (int) ($vars->get($meta['bias']) ?? 0) : 0;
+                $bias = (int) ($vars->get($meta['bias']) ?? 0);
                 $scale = ThemeColorPicker::scale($hex, $bias);
                 $name  = $meta['name'];
 
