@@ -15,6 +15,10 @@ class AddonServiceProvider extends BaseAddonServiceProvider
         Fieldtypes\ButtonPreview::class,
     ];
 
+    protected $tags = [
+        Tags\ThemeColorScale::class,
+    ];
+
     protected $scripts = [
         __DIR__.'/../resources/js/addon.js',
     ];

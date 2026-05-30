@@ -54,14 +54,15 @@
             return toHex(Math.round(clamp(toSrgb(r))*255), Math.round(clamp(toSrgb(g))*255), Math.round(clamp(toSrgb(bv))*255));
         }
 
-        function hexPalette(hex) {
-            const [r, g, b] = parseHex(hex);
-            const mix = (c, target, t) => Math.round(c + (target - c) * t);
-            return [
-                toHex(mix(r, 255, 0.15), mix(g, 255, 0.15), mix(b, 255, 0.15)),
-                '#' + hex.replace('#', ''),
-                toHex(mix(r, 0, 0.15),   mix(g, 0, 0.15),   mix(b, 0, 0.15)),
-            ];
+        const SCALE_STEPS = [0.971, 0.941, 0.874, 0.785, 0.681, 0.572, 0.462, 0.374, 0.274, 0.184, 0.122];
+
+        function hexScale(hex, bias = 0) {
+            const [, C, H] = hexToOklch(hex);
+            const offset = bias / 100 * 0.35;
+            return SCALE_STEPS.map(stepL => {
+                const L = Math.max(0.05, Math.min(0.97, stepL + offset));
+                return oklchToHex(L, C * Math.min(1, L * 2, (1 - L) * 2), H);
+            });
         }
 
         function neutralScale(tintHex) {
@@ -85,30 +86,21 @@
             setup(props, { emit, attrs }) {
                 const publishContext = usePublishContext();
 
-                const colorOverrides = [
-                    { key: 'primary_color',    toggle: 'control_primary_tones',    glare: 'primary_glare_color',    shade: 'primary_shade_color' },
-                    { key: 'secondary_color',  toggle: 'control_secondary_tones',  glare: 'secondary_glare_color',  shade: 'secondary_shade_color' },
-                    { key: 'tertiary_color',   toggle: 'control_tertiary_tones',   glare: 'tertiary_glare_color',   shade: 'tertiary_shade_color' },
-                    { key: 'quaternary_color', toggle: 'control_quaternary_tones', glare: 'quaternary_glare_color', shade: 'quaternary_shade_color' },
+                const colorData = [
+                    { key: 'primary_color',    toggle: 'control_primary_tones',    biasKey: 'primary_tones_bias' },
+                    { key: 'secondary_color',  toggle: 'control_secondary_tones',  biasKey: 'secondary_tones_bias' },
+                    { key: 'tertiary_color',   toggle: 'control_tertiary_tones',   biasKey: 'tertiary_tones_bias' },
+                    { key: 'quaternary_color', toggle: 'control_quaternary_tones', biasKey: 'quaternary_tones_bias' },
                 ];
 
                 const liveSwatches = computed(() => {
                     if (publishContext) {
                         const vals = getPublishValues(publishContext);
-                        const phpOverrides = props.meta.overrides ?? {};
                         const palette = [];
-                        for (const { key, toggle, glare: glareKey, shade: shadeKey } of colorOverrides) {
+                        for (const { key, toggle, biasKey } of colorData) {
                             if (!vals[key]) continue;
-                            const [autoGlare, base, autoShade] = hexPalette(vals[key]);
-                            const phpOvr = phpOverrides[key];
-                            const liveControlled = vals[toggle];
-                            const glare = (liveControlled && vals[glareKey])
-                                ? vals[glareKey]
-                                : (phpOvr?.glare ?? autoGlare);
-                            const shade = (liveControlled && vals[shadeKey])
-                                ? vals[shadeKey]
-                                : (phpOvr?.shade ?? autoShade);
-                            palette.push(glare, base, shade);
+                            const bias = vals[toggle] ? (vals[biasKey] ?? 0) : 0;
+                            palette.push(...hexScale(vals[key], bias));
                         }
                         if (!palette.length) return props.meta.swatches || [];
                         const tintKey = { from_primary: 'primary_color', from_secondary: 'secondary_color', from_tertiary: 'tertiary_color', from_quaternary: 'quaternary_color' }[vals.neutral_color];
@@ -126,29 +118,6 @@
                         emit('update:value', newSwatches[idx]);
                     }
                 });
-
-                const autofillMap = {
-                    'primary_glare_color':    { toggle: 'control_primary_tones',    base: 'primary_color',    isGlare: true },
-                    'primary_shade_color':    { toggle: 'control_primary_tones',    base: 'primary_color',    isGlare: false },
-                    'secondary_glare_color':  { toggle: 'control_secondary_tones',  base: 'secondary_color',  isGlare: true },
-                    'secondary_shade_color':  { toggle: 'control_secondary_tones',  base: 'secondary_color',  isGlare: false },
-                    'tertiary_glare_color':   { toggle: 'control_tertiary_tones',   base: 'tertiary_color',   isGlare: true },
-                    'tertiary_shade_color':   { toggle: 'control_tertiary_tones',   base: 'tertiary_color',   isGlare: false },
-                    'quaternary_glare_color': { toggle: 'control_quaternary_tones', base: 'quaternary_color', isGlare: true },
-                    'quaternary_shade_color': { toggle: 'control_quaternary_tones', base: 'quaternary_color', isGlare: false },
-                };
-                const autofill = autofillMap[attrs.name ?? props.config?.handle];
-                if (autofill && publishContext) {
-                    onMounted(() => {
-                        if (!props.value) {
-                            const baseHex = getPublishValues(publishContext)[autofill.base];
-                            if (baseHex) {
-                                const [glare, , shade] = hexPalette(baseHex);
-                                emit('update:value', autofill.isGlare ? glare : shade);
-                            }
-                        }
-                    });
-                }
 
                 return () => {
                     const ColorFieldtype = resolveComponent('color-fieldtype');

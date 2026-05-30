@@ -12,6 +12,8 @@ class ThemeColorPicker extends Fieldtype
 
     private static ?array $cachedSwatches = null;
 
+    private const LIGHTNESS_STEPS = [0.971, 0.941, 0.874, 0.785, 0.681, 0.572, 0.462, 0.374, 0.274, 0.184, 0.122];
+
     private const GRAY_STEPS = [
         '#fafafa', '#f5f5f5', '#e5e5e5', '#d4d4d4', '#a3a3a3',
         '#737373', '#525252', '#404040', '#262626', '#171717', '#0a0a0a',
@@ -24,38 +26,19 @@ class ThemeColorPicker extends Fieldtype
 
     public function preload(): array
     {
-        return [
-            'swatches'  => static::buildSwatches(),
-            'overrides' => static::buildOverrides(),
-        ];
+        return ['swatches' => static::buildSwatches()];
     }
 
-    public static function buildOverrides(): array
+    public static function scale(string $hex, int $bias = 0): array
     {
-        try {
-            $global = GlobalSet::findByHandle('theme_settings');
-            if (!$global) return [];
-            $variables = $global->in(Site::default()->handle());
-            if (!$variables) return [];
+        [, $C, $H] = static::hexToOklch($hex);
+        $offset = $bias / 100 * 0.35;
 
-            $overrides = [];
-            foreach ([
-                ['key' => 'primary_color',    'toggle' => 'control_primary_tones',    'glare' => 'primary_glare_color',    'shade' => 'primary_shade_color'],
-                ['key' => 'secondary_color',  'toggle' => 'control_secondary_tones',  'glare' => 'secondary_glare_color',  'shade' => 'secondary_shade_color'],
-                ['key' => 'tertiary_color',   'toggle' => 'control_tertiary_tones',   'glare' => 'tertiary_glare_color',   'shade' => 'tertiary_shade_color'],
-                ['key' => 'quaternary_color', 'toggle' => 'control_quaternary_tones', 'glare' => 'quaternary_glare_color', 'shade' => 'quaternary_shade_color'],
-            ] as $meta) {
-                if (!$variables->get($meta['toggle'])) continue;
-                $glare = $variables->get($meta['glare']);
-                $shade = $variables->get($meta['shade']);
-                if ($glare || $shade) {
-                    $overrides[$meta['key']] = ['glare' => $glare, 'shade' => $shade];
-                }
-            }
-            return $overrides;
-        } catch (\Throwable) {
-            return [];
-        }
+        return array_map(function ($stepL) use ($C, $H, $offset) {
+            $L = max(0.05, min(0.97, $stepL + $offset));
+            $chromaScale = min(1.0, $L * 2.0, (1.0 - $L) * 2.0);
+            return static::oklchToHex($L, $C * $chromaScale, $H);
+        }, self::LIGHTNESS_STEPS);
     }
 
     public static function buildSwatches(): array
@@ -70,20 +53,16 @@ class ThemeColorPicker extends Fieldtype
 
             $swatches = [];
 
-            $colorMeta = [
-                ['key' => 'primary_color',    'toggle' => 'control_primary_tones',    'glare' => 'primary_glare_color',    'shade' => 'primary_shade_color'],
-                ['key' => 'secondary_color',  'toggle' => 'control_secondary_tones',  'glare' => 'secondary_glare_color',  'shade' => 'secondary_shade_color'],
-                ['key' => 'tertiary_color',   'toggle' => 'control_tertiary_tones',   'glare' => 'tertiary_glare_color',   'shade' => 'tertiary_shade_color'],
-                ['key' => 'quaternary_color', 'toggle' => 'control_quaternary_tones', 'glare' => 'quaternary_glare_color', 'shade' => 'quaternary_shade_color'],
-            ];
-
-            foreach ($colorMeta as $meta) {
-                if (!($hex = $variables->get($meta['key']))) continue;
-                [$autoGlare, $base, $autoShade] = static::palette($hex);
-                $controlled = $variables->get($meta['toggle']);
-                $swatches[] = ($controlled && $variables->get($meta['glare'])) ? $variables->get($meta['glare']) : $autoGlare;
-                $swatches[] = $base;
-                $swatches[] = ($controlled && $variables->get($meta['shade'])) ? $variables->get($meta['shade']) : $autoShade;
+            foreach ([
+                ['color' => 'primary_color',    'bias' => 'primary_tones_bias'],
+                ['color' => 'secondary_color',  'bias' => 'secondary_tones_bias'],
+                ['color' => 'tertiary_color',   'bias' => 'tertiary_tones_bias'],
+                ['color' => 'quaternary_color', 'bias' => 'quaternary_tones_bias'],
+            ] as $meta) {
+                if (!($hex = $variables->get($meta['color']))) continue;
+                $controlled = $variables->get(str_replace('_color', '_tones', $meta['color']));
+                $bias = $controlled ? (int) ($variables->get($meta['bias']) ?? 0) : 0;
+                array_push($swatches, ...static::scale($hex, $bias));
             }
 
             $tintHex = match ($variables->get('neutral_color')) {
@@ -100,17 +79,6 @@ class ThemeColorPicker extends Fieldtype
         } catch (\Throwable) {
             return [];
         }
-    }
-
-    private static function palette(string $hex): array
-    {
-        [$r, $g, $b] = static::parseHex($hex);
-        $blend = fn(int $c, int $target, float $t) => (int) round($c + ($target - $c) * $t);
-        return [
-            static::toHex($blend($r, 255, 0.15), $blend($g, 255, 0.15), $blend($b, 255, 0.15)),
-            '#' . ltrim($hex, '#'),
-            static::toHex($blend($r, 0, 0.15), $blend($g, 0, 0.15), $blend($b, 0, 0.15)),
-        ];
     }
 
     private static function neutralScale(?string $tintHex): array
