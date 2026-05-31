@@ -103,13 +103,24 @@
                     return props.meta.swatches || [];
                 });
 
-                watch(liveSwatches, (newSwatches, oldSwatches) => {
-                    if (!props.value || !oldSwatches?.length) return;
-                    const idx = oldSwatches.findIndex(s => s === props.value);
-                    if (idx === -1) return;
-                    if (newSwatches[idx] === props.value) return;
-                    if (newSwatches[idx]) {
-                        emit('update:value', newSwatches[idx]);
+                const stepIndex = ref(-1);
+
+                watch(() => props.value, (val) => {
+                    if (!val) { stepIndex.value = -1; return; }
+                    const idx = liveSwatches.value.indexOf(val);
+                    if (idx !== -1) stepIndex.value = idx;
+                }, { immediate: true });
+
+                const onSelectValue = (val) => {
+                    stepIndex.value = liveSwatches.value.indexOf(val);
+                    emit('update:value', val);
+                };
+
+                watch(liveSwatches, (newSwatches) => {
+                    if (stepIndex.value === -1 || !newSwatches.length) return;
+                    const newColor = newSwatches[stepIndex.value];
+                    if (newColor && newColor !== props.value) {
+                        emit('update:value', newColor);
                     }
                 });
 
@@ -120,7 +131,7 @@
                         value:  props.value,
                         meta:   props.meta,
                         config: { ...props.config, swatches: liveSwatches.value, allow_any: true },
-                        'onUpdate:value': (val) => emit('update:value', val),
+                        'onUpdate:value': onSelectValue,
                         'onUpdate:meta':  (val) => emit('update:meta', val),
                         onFocus: () => emit('focus'),
                         onBlur:  () => emit('blur'),
