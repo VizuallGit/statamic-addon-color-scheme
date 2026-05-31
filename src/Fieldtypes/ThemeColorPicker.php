@@ -53,14 +53,23 @@ class ThemeColorPicker extends Fieldtype
 
     public static function scale(string $hex, int $bias = 0): array
     {
-        [, $C, $H] = static::hexToOklch($hex);
+        [$L_base, $C, $H] = static::hexToOklch($hex);
         $offset = $bias / 100 * 0.35;
 
-        return array_map(function ($stepL) use ($C, $H, $offset) {
+        // Find step closest to base color's natural lightness so exact hex appears in palette
+        $anchorIdx = 0;
+        $closestDist = PHP_FLOAT_MAX;
+        foreach (self::LIGHTNESS_STEPS as $i => $stepL) {
+            $d = abs($stepL - $L_base);
+            if ($d < $closestDist) { $closestDist = $d; $anchorIdx = $i; }
+        }
+
+        return array_map(function ($stepL, $i) use ($C, $H, $offset, $hex, $anchorIdx) {
+            if ($i === $anchorIdx) return $hex;
             $L = max(0.05, min(0.97, $stepL + $offset));
             $chromaScale = min(1.0, $L * 2.0, (1.0 - $L) * 2.0);
             return static::oklchToHex($L, $C * $chromaScale, $H);
-        }, self::LIGHTNESS_STEPS);
+        }, self::LIGHTNESS_STEPS, array_keys(self::LIGHTNESS_STEPS));
     }
 
     public static function buildSwatches(): array

@@ -57,9 +57,17 @@
         const SCALE_STEPS = [0.971, 0.941, 0.874, 0.785, 0.681, 0.572, 0.462, 0.374, 0.274, 0.184, 0.122];
 
         function hexScale(hex, bias = 0) {
-            const [, C, H] = hexToOklch(hex);
+            const [L_base, C, H] = hexToOklch(hex);
             const offset = bias / 100 * 0.35;
-            return SCALE_STEPS.map(stepL => {
+            // Find the step closest to the base color's natural lightness (no bias)
+            // so the exact input hex always appears in the palette
+            let anchorIdx = 0, closestDist = Infinity;
+            SCALE_STEPS.forEach((stepL, i) => {
+                const d = Math.abs(stepL - L_base);
+                if (d < closestDist) { closestDist = d; anchorIdx = i; }
+            });
+            return SCALE_STEPS.map((stepL, i) => {
+                if (i === anchorIdx) return hex;
                 const L = Math.max(0.05, Math.min(0.97, stepL + offset));
                 return oklchToHex(L, C * Math.min(1, L * 2, (1 - L) * 2), H);
             });
