@@ -105,9 +105,10 @@
 
                 watch(liveSwatches, (newSwatches, oldSwatches) => {
                     if (!props.value || !oldSwatches?.length) return;
-                    if (newSwatches.includes(props.value)) return;
                     const idx = oldSwatches.findIndex(s => s === props.value);
-                    if (idx !== -1 && newSwatches[idx]) {
+                    if (idx === -1) return;
+                    if (newSwatches[idx] === props.value) return;
+                    if (newSwatches[idx]) {
                         emit('update:value', newSwatches[idx]);
                     }
                 });
