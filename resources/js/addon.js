@@ -93,7 +93,8 @@
                         const palette = [];
                         for (const { key, biasKey } of colorData) {
                             if (!vals[key]) continue;
-                            palette.push(...hexScale(vals[key], vals[biasKey] ?? 0));
+                            const bias = vals[biasKey] ?? props.meta.biases?.[key] ?? 0;
+                            palette.push(...hexScale(vals[key], bias));
                         }
                         if (!palette.length) return props.meta.swatches || [];
                         palette.push(...neutralScale());

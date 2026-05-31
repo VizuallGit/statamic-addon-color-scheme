@@ -26,7 +26,29 @@ class ThemeColorPicker extends Fieldtype
 
     public function preload(): array
     {
-        return ['swatches' => static::buildSwatches()];
+        return [
+            'swatches' => static::buildSwatches(),
+            'biases'   => static::buildBiases(),
+        ];
+    }
+
+    public static function buildBiases(): array
+    {
+        try {
+            $global = GlobalSet::findByHandle('theme_settings');
+            if (!$global) return [];
+            $variables = $global->in(Site::default()->handle());
+            if (!$variables) return [];
+
+            return [
+                'primary_color'    => (int) ($variables->get('primary_tones_bias')    ?? 0),
+                'secondary_color'  => (int) ($variables->get('secondary_tones_bias')  ?? 0),
+                'tertiary_color'   => (int) ($variables->get('tertiary_tones_bias')   ?? 0),
+                'quaternary_color' => (int) ($variables->get('quaternary_tones_bias') ?? 0),
+            ];
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     public static function scale(string $hex, int $bias = 0): array
