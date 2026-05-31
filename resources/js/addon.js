@@ -2,7 +2,7 @@
     'use strict';
 
     Statamic.booting(() => {
-        const { h, ref, computed, watch, onMounted, onUnmounted, resolveComponent, getCurrentInstance } = window.Vue;
+        const { h, ref, computed, watch, inject, onMounted, onUnmounted, resolveComponent, getCurrentInstance } = window.Vue;
 
         const GRAY_STEPS = ['#fafafa','#f5f5f5','#e5e5e5','#d4d4d4','#a3a3a3','#737373','#525252','#404040','#262626','#171717','#0a0a0a'];
 
@@ -78,7 +78,7 @@
             },
             emits: ['update:value', 'update:meta', 'focus', 'blur'],
             setup(props, { emit, attrs }) {
-                const publishContext = usePublishContext();
+                const publishContext = inject('PublishContainerContext', null);
 
                 const colorData = [
                     { key: 'primary_color',    biasKey: 'primary_tones_bias' },
@@ -116,7 +116,8 @@
                     emit('update:value', val);
                 };
 
-                watch(liveSwatches, (newSwatches) => {
+                watch(liveSwatches, (newSwatches, oldSwatches) => {
+                    if (!oldSwatches?.length) return;
                     if (stepIndex.value === -1 || !newSwatches.length) return;
                     const newColor = newSwatches[stepIndex.value];
                     if (newColor && newColor !== props.value) {
