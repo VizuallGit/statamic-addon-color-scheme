@@ -56,12 +56,13 @@
 
         const SCALE_STEPS = [0.971, 0.941, 0.874, 0.785, 0.681, 0.572, 0.462, 0.374, 0.274, 0.184, 0.122];
 
-        function hexScale(hex, bias = 0) {
+        function hexScale(hex, bias = 0, saturation = 0) {
             const [, C, H] = hexToOklch(hex);
-            const offset = bias / 100 * 0.35;
+            const offset  = bias / 100 * 0.35;
+            const satMult = Math.max(0, 1 + saturation / 100);
             return SCALE_STEPS.map(stepL => {
                 const L = Math.max(0.05, Math.min(0.97, stepL + offset));
-                return oklchToHex(L, C * Math.min(1, L * 2, (1 - L) * 2), H);
+                return oklchToHex(L, C * Math.min(1, L * 2, (1 - L) * 2) * satMult, H);
             });
         }
 
@@ -81,21 +82,22 @@
                 const publishContext = inject('PublishContainerContext', null);
 
                 const colorData = [
-                    { key: 'primary_color',    biasKey: 'primary_tones_bias' },
-                    { key: 'secondary_color',  biasKey: 'secondary_tones_bias' },
-                    { key: 'tertiary_color',   biasKey: 'tertiary_tones_bias' },
-                    { key: 'quaternary_color', biasKey: 'quaternary_tones_bias' },
+                    { key: 'primary_color',    biasKey: 'primary_tones_bias',    satKey: 'primary_saturation' },
+                    { key: 'secondary_color',  biasKey: 'secondary_tones_bias',  satKey: 'secondary_saturation' },
+                    { key: 'tertiary_color',   biasKey: 'tertiary_tones_bias',   satKey: 'tertiary_saturation' },
+                    { key: 'quaternary_color', biasKey: 'quaternary_tones_bias', satKey: 'quaternary_saturation' },
                 ];
 
                 const liveSwatches = computed(() => {
                     if (publishContext) {
                         const vals = getPublishValues(publishContext);
                         const palette = [];
-                        for (const { key, biasKey } of colorData) {
+                        for (const { key, biasKey, satKey } of colorData) {
                             if (!vals[key]) continue;
-                            const bias = vals[biasKey] ?? props.meta.biases?.[key] ?? 0;
+                            const bias = vals[biasKey] ?? props.meta.biases?.[key]      ?? 0;
+                            const sat  = vals[satKey]  ?? props.meta.saturations?.[key] ?? 0;
                             palette.push(vals[key]);
-                            palette.push(...hexScale(vals[key], bias));
+                            palette.push(...hexScale(vals[key], bias, sat));
                         }
                         if (!palette.length) return props.meta.swatches || [];
                         palette.push(...neutralScale());
@@ -156,8 +158,9 @@
                     const vals = publishContext ? getPublishValues(publishContext) : {};
                     const hex = vals[props.config.base_color ?? 'primary_color'];
                     if (!hex) return [];
-                    const bias = vals[props.config.bias_field ?? 'primary_tones_bias'] ?? 0;
-                    return hexScale(hex, bias).map((color, i) => ({ step: STEP_LABELS[i], color }));
+                    const bias = vals[props.config.bias_field       ?? 'primary_tones_bias']  ?? 0;
+                    const sat  = vals[props.config.saturation_field ?? 'primary_saturation']  ?? 0;
+                    return hexScale(hex, bias, sat).map((color, i) => ({ step: STEP_LABELS[i], color }));
                 });
 
                 return () => {

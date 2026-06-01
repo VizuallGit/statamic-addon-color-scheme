@@ -14,10 +14,10 @@ class ThemeColorScale extends Tags
     private const STEP_NAMES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
     private const COLORS = [
-        ['name' => 'primary',    'color' => 'primary_color',    'bias' => 'primary_tones_bias'],
-        ['name' => 'secondary',  'color' => 'secondary_color',  'bias' => 'secondary_tones_bias'],
-        ['name' => 'tertiary',   'color' => 'tertiary_color',   'bias' => 'tertiary_tones_bias'],
-        ['name' => 'quaternary', 'color' => 'quaternary_color', 'bias' => 'quaternary_tones_bias'],
+        ['name' => 'primary',    'color' => 'primary_color',    'bias' => 'primary_tones_bias',    'sat' => 'primary_saturation'],
+        ['name' => 'secondary',  'color' => 'secondary_color',  'bias' => 'secondary_tones_bias',  'sat' => 'secondary_saturation'],
+        ['name' => 'tertiary',   'color' => 'tertiary_color',   'bias' => 'tertiary_tones_bias',   'sat' => 'tertiary_saturation'],
+        ['name' => 'quaternary', 'color' => 'quaternary_color', 'bias' => 'quaternary_tones_bias', 'sat' => 'quaternary_saturation'],
     ];
 
     public function index(): string
@@ -35,7 +35,8 @@ class ThemeColorScale extends Tags
                 if (!$hex) continue;
 
                 $bias = (int) ($vars->get($meta['bias']) ?? 0);
-                $scale = ThemeColorPicker::scale($hex, $bias);
+                $sat  = (int) ($vars->get($meta['sat'])  ?? 0);
+                $scale = ThemeColorPicker::scale($hex, $bias, $sat);
                 $name  = $meta['name'];
 
                 $lines[] = "--{$name}: {$hex};";

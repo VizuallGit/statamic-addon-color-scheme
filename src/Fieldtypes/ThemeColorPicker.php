@@ -27,8 +27,9 @@ class ThemeColorPicker extends Fieldtype
     public function preload(): array
     {
         return [
-            'swatches' => static::buildSwatches(),
-            'biases'   => static::buildBiases(),
+            'swatches'    => static::buildSwatches(),
+            'biases'      => static::buildBiases(),
+            'saturations' => static::buildSaturations(),
         ];
     }
 
@@ -51,15 +52,35 @@ class ThemeColorPicker extends Fieldtype
         }
     }
 
-    public static function scale(string $hex, int $bias = 0): array
+    public static function buildSaturations(): array
+    {
+        try {
+            $global = GlobalSet::findByHandle('theme_settings');
+            if (!$global) return [];
+            $variables = $global->in(Site::default()->handle());
+            if (!$variables) return [];
+
+            return [
+                'primary_color'    => (int) ($variables->get('primary_saturation')    ?? 0),
+                'secondary_color'  => (int) ($variables->get('secondary_saturation')  ?? 0),
+                'tertiary_color'   => (int) ($variables->get('tertiary_saturation')   ?? 0),
+                'quaternary_color' => (int) ($variables->get('quaternary_saturation') ?? 0),
+            ];
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    public static function scale(string $hex, int $bias = 0, int $saturation = 0): array
     {
         [, $C, $H] = static::hexToOklch($hex);
-        $offset = $bias / 100 * 0.35;
+        $offset  = $bias / 100 * 0.35;
+        $satMult = max(0.0, 1 + $saturation / 100);
 
-        return array_map(function ($stepL) use ($C, $H, $offset) {
+        return array_map(function ($stepL) use ($C, $H, $offset, $satMult) {
             $L = max(0.05, min(0.97, $stepL + $offset));
             $chromaScale = min(1.0, $L * 2.0, (1.0 - $L) * 2.0);
-            return static::oklchToHex($L, $C * $chromaScale, $H);
+            return static::oklchToHex($L, $C * $chromaScale * $satMult, $H);
         }, self::LIGHTNESS_STEPS);
     }
 
@@ -76,15 +97,16 @@ class ThemeColorPicker extends Fieldtype
             $swatches = [];
 
             foreach ([
-                ['color' => 'primary_color',    'bias' => 'primary_tones_bias'],
-                ['color' => 'secondary_color',  'bias' => 'secondary_tones_bias'],
-                ['color' => 'tertiary_color',   'bias' => 'tertiary_tones_bias'],
-                ['color' => 'quaternary_color', 'bias' => 'quaternary_tones_bias'],
+                ['color' => 'primary_color',    'bias' => 'primary_tones_bias',    'sat' => 'primary_saturation'],
+                ['color' => 'secondary_color',  'bias' => 'secondary_tones_bias',  'sat' => 'secondary_saturation'],
+                ['color' => 'tertiary_color',   'bias' => 'tertiary_tones_bias',   'sat' => 'tertiary_saturation'],
+                ['color' => 'quaternary_color', 'bias' => 'quaternary_tones_bias', 'sat' => 'quaternary_saturation'],
             ] as $meta) {
                 if (!($hex = $variables->get($meta['color']))) continue;
                 $bias = (int) ($variables->get($meta['bias']) ?? 0);
+                $sat  = (int) ($variables->get($meta['sat'])  ?? 0);
                 $swatches[] = $hex;
-                array_push($swatches, ...static::scale($hex, $bias));
+                array_push($swatches, ...static::scale($hex, $bias, $sat));
             }
 
             array_push($swatches, ...static::neutralScale());
