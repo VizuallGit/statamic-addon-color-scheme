@@ -55,13 +55,20 @@
         }
 
         const SCALE_STEPS = [0.971, 0.941, 0.874, 0.785, 0.681, 0.572, 0.462, 0.374, 0.274, 0.184, 0.122];
+        const SCALE_MAX   = SCALE_STEPS[0];                        // 0.971 (trin 50)
+        const SCALE_MIN   = SCALE_STEPS[SCALE_STEPS.length - 1];  // 0.122 (trin 950)
+        const SCALE_SPAN  = SCALE_MAX - SCALE_MIN;
 
         function hexScale(hex, bias = 0, saturation = 0) {
             const [, C, H] = hexToOklch(hex);
             const offset  = bias / 100 * 0.35;
+            // Komprimér skalaen i stedet for at clippe — alle trin forbliver unikke
+            const minL    = Math.max(0.05, SCALE_MIN + offset);
+            const maxL    = Math.min(0.97, SCALE_MAX + offset);
             const satMult = Math.max(0, 1 + saturation / 100);
             return SCALE_STEPS.map(stepL => {
-                const L = Math.max(0.05, Math.min(0.97, stepL + offset));
+                const t = (stepL - SCALE_MIN) / SCALE_SPAN;
+                const L = minL + t * (maxL - minL);
                 return oklchToHex(L, C * Math.min(1, L * 2, (1 - L) * 2) * satMult, H);
             });
         }

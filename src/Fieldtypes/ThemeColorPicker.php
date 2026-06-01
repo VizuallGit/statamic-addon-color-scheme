@@ -74,11 +74,17 @@ class ThemeColorPicker extends Fieldtype
     public static function scale(string $hex, int $bias = 0, int $saturation = 0): array
     {
         [, $C, $H] = static::hexToOklch($hex);
-        $offset  = $bias / 100 * 0.35;
-        $satMult = max(0.0, 1 + $saturation / 100);
+        $offset   = $bias / 100 * 0.35;
+        $scaleMax = self::LIGHTNESS_STEPS[0];                                   // 0.971
+        $scaleMin = self::LIGHTNESS_STEPS[count(self::LIGHTNESS_STEPS) - 1];   // 0.122
+        $span     = $scaleMax - $scaleMin;
+        $minL     = max(0.05, $scaleMin + $offset);
+        $maxL     = min(0.97, $scaleMax + $offset);
+        $satMult  = max(0.0, 1 + $saturation / 100);
 
-        return array_map(function ($stepL) use ($C, $H, $offset, $satMult) {
-            $L = max(0.05, min(0.97, $stepL + $offset));
+        return array_map(function ($stepL) use ($C, $H, $minL, $maxL, $scaleMin, $span, $satMult) {
+            $t = ($stepL - $scaleMin) / $span;
+            $L = $minL + $t * ($maxL - $minL);
             $chromaScale = min(1.0, $L * 2.0, (1.0 - $L) * 2.0);
             return static::oklchToHex($L, $C * $chromaScale * $satMult, $H);
         }, self::LIGHTNESS_STEPS);
