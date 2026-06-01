@@ -59,8 +59,7 @@
         function hexScale(hex, bias = 0) {
             const [, C, H] = hexToOklch(hex);
             const offset = bias / 100 * 0.35;
-            return SCALE_STEPS.map((stepL, i) => {
-                if (i === 5) return hex; // trin 500 = altid den eksakte basisfarve
+            return SCALE_STEPS.map(stepL => {
                 const L = Math.max(0.05, Math.min(0.97, stepL + offset));
                 return oklchToHex(L, C * Math.min(1, L * 2, (1 - L) * 2), H);
             });
@@ -95,6 +94,7 @@
                         for (const { key, biasKey } of colorData) {
                             if (!vals[key]) continue;
                             const bias = vals[biasKey] ?? props.meta.biases?.[key] ?? 0;
+                            palette.push(vals[key]);
                             palette.push(...hexScale(vals[key], bias));
                         }
                         if (!palette.length) return props.meta.swatches || [];

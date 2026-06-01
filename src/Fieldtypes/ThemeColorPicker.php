@@ -56,12 +56,11 @@ class ThemeColorPicker extends Fieldtype
         [, $C, $H] = static::hexToOklch($hex);
         $offset = $bias / 100 * 0.35;
 
-        return array_map(function ($stepL, $i) use ($C, $H, $offset, $hex) {
-            if ($i === 5) return $hex; // trin 500 = altid den eksakte basisfarve
+        return array_map(function ($stepL) use ($C, $H, $offset) {
             $L = max(0.05, min(0.97, $stepL + $offset));
             $chromaScale = min(1.0, $L * 2.0, (1.0 - $L) * 2.0);
             return static::oklchToHex($L, $C * $chromaScale, $H);
-        }, self::LIGHTNESS_STEPS, array_keys(self::LIGHTNESS_STEPS));
+        }, self::LIGHTNESS_STEPS);
     }
 
     public static function buildSwatches(): array
@@ -84,6 +83,7 @@ class ThemeColorPicker extends Fieldtype
             ] as $meta) {
                 if (!($hex = $variables->get($meta['color']))) continue;
                 $bias = (int) ($variables->get($meta['bias']) ?? 0);
+                $swatches[] = $hex;
                 array_push($swatches, ...static::scale($hex, $bias));
             }
 
