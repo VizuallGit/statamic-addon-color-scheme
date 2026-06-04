@@ -481,7 +481,7 @@
                     Object.assign(div.style, {
                         position: 'fixed', zIndex: '99999',
                         top: top + 'px', left: left + 'px',
-                        width: '288px', maxHeight: '320px',
+                        width: '288px', maxHeight: '480px',
                         backgroundColor: contentBg,
                         border: '1px solid ' + border,
                         borderRadius: '8px',
