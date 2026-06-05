@@ -621,6 +621,13 @@
                 const fontWeight   = computed(() => WEIGHT_MAP[vals.value.button_weight] || '700');
                 const borderRadius = computed(() => RADIUS_MAP[vals.value.button_radius] || '0px');
                 const textTransform = computed(() => vals.value.button_uppercase ? 'uppercase' : 'none');
+                const fontVariationSettings = computed(() => {
+                    const wdth = vals.value.button_width;
+                    if (!wdth) return null;
+                    const num = parseFloat(String(wdth));
+                    if (isNaN(num)) return null;
+                    return `'wdth' ${num}`;
+                });
 
                 function parseColors(val) {
                     if (val && typeof val === 'object' && val.bg) return { bg: val.bg, text: val.text || '#ffffff' };
@@ -641,21 +648,22 @@
                     const text = colors.value.text || '#ffffff';
 
                     const btnBase = {
-                        display:        'inline-flex',
-                        alignItems:     'center',
-                        justifyContent: 'center',
-                        paddingBlock:   '0.9em',
-                        paddingInline:  '1.8em',
-                        borderRadius:   borderRadius.value,
-                        fontSize:       fontSize.value,
-                        fontWeight:     fontWeight.value,
-                        fontFamily:     fontFamily.value,
-                        textTransform:  textTransform.value,
-                        lineHeight:     '1.15',
-                        cursor:         'default',
-                        border:         'none',
-                        outline:        'none',
-                        whiteSpace:     'nowrap',
+                        display:               'inline-flex',
+                        alignItems:            'center',
+                        justifyContent:        'center',
+                        paddingBlock:          '0.9em',
+                        paddingInline:         '1.8em',
+                        borderRadius:          borderRadius.value,
+                        fontSize:              fontSize.value,
+                        fontWeight:            fontWeight.value,
+                        fontFamily:            fontFamily.value,
+                        fontVariationSettings: fontVariationSettings.value || undefined,
+                        textTransform:         textTransform.value,
+                        lineHeight:            '1.15',
+                        cursor:                'default',
+                        border:                'none',
+                        outline:               'none',
+                        whiteSpace:            'nowrap',
                     };
 
                     return h('div', { class: 'fluid-ft-panel rounded-lg' }, [
@@ -699,4 +707,59 @@
         });
 
     });
+
+    // Auto-open a replicator set on page load:
+    //   #open=N      → Nth top-level [data-replicator-set] (page sections)
+    //   ?cs=N#colors → Nth [data-replicator-set][data-type="color_scheme"]
+    (function () {
+        const mPage   = window.location.hash.match(/^#open=(\d+)$/);
+        const csParam = new URLSearchParams(window.location.search).get('cs');
+        const mScheme = csParam !== null;
+        if (!mPage && !mScheme) return;
+
+        const targetIndex = parseInt(mPage ? mPage[1] : csParam, 10);
+        const MAX_MS      = 8000;
+        const INTERVAL    = 150;
+        const start       = Date.now();
+
+        function findTarget() {
+            if (mScheme) {
+                const all = [...document.querySelectorAll('[data-replicator-set][data-type="color_scheme"]')];
+                return all[targetIndex] ?? null;
+            }
+            const topLevel = [...document.querySelectorAll('[data-replicator-set]')]
+                .filter(el => !el.parentElement?.closest('[data-replicator-set]'));
+            return topLevel[targetIndex] ?? null;
+        }
+
+        function tryOpen() {
+            const target = findTarget();
+
+            if (!target) {
+                if (mScheme) {
+                    const colorsTab = [...document.querySelectorAll('[role="tab"]')]
+                        .find(t => t.textContent.trim().toLowerCase() === 'colors');
+                    if (colorsTab && colorsTab.getAttribute('aria-selected') !== 'true') {
+                        colorsTab.click();
+                    }
+                }
+                if (Date.now() - start < MAX_MS) setTimeout(tryOpen, INTERVAL);
+                return;
+            }
+
+            if (target.dataset.collapsed !== 'false') {
+                target.querySelector('header button')?.click();
+            }
+
+            setTimeout(() => {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const prev = target.style.outline;
+                target.style.outline      = '2px solid #3b82f6';
+                target.style.borderRadius = '4px';
+                setTimeout(() => { target.style.outline = prev; }, 2000);
+            }, 350);
+        }
+
+        setTimeout(tryOpen, 600);
+    }());
 }());
