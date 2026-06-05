@@ -708,6 +708,35 @@
 
     });
 
+    // ── Delt swatch-fetch (cached, bruges af CSS-injektion og toolbar-knap) ──
+    let _swatchesCache = null;
+    function fetchSwatches() {
+        if (_swatchesCache !== null) return Promise.resolve(_swatchesCache);
+        const cpRoot = document.querySelector('meta[name="cp-root"]')?.content || '/cp';
+        return fetch(`${cpRoot}/vizuall/swatches`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        })
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => [])
+        .then(s => { _swatchesCache = s; return s; });
+    }
+
+    // Injicér tema-CSS-variabler i CP så var(--primary-500) virker i Bard-editoren
+    Statamic.booting(() => {
+        fetchSwatches().then(swatches => {
+            if (!swatches.length) return;
+            const css = swatches
+                .filter(s => s.var)
+                .map(s => `${s.var}:${s.hex}`)
+                .join(';');
+            const style = document.createElement('style');
+            style.id = 'cp-theme-vars';
+            style.textContent = `:root{${css}}`;
+            document.head.appendChild(style);
+        });
+    });
+
     // ── Bard color mark + toolbar button ─────────────────────────────────────
 
     // Registrér knappen i button-pickeren
@@ -782,19 +811,7 @@
                 const portalEl    = { value: null };
                 const COLS        = 12;
 
-                // Hent swatches fra CP-route (korrekt timing, ingen boot-problemer)
-                let swatchesCache = null;
-                function fetchSwatches() {
-                    if (swatchesCache !== null) return Promise.resolve(swatchesCache);
-                    const cpRoute = (window.Statamic?.config?.cp_root || '/cp');
-                    return fetch(`${cpRoute}/vizuall/swatches`, {
-                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                        credentials: 'same-origin',
-                    })
-                    .then(r => r.ok ? r.json() : [])
-                    .catch(() => [])
-                    .then(s => { swatchesCache = s; return s; });
-                }
+                // Bruger den delte fetchSwatches fra IIFE-scope
 
                 function readActiveColor() {
                     try {
