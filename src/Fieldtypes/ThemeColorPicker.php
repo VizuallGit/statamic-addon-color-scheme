@@ -19,6 +19,9 @@ class ThemeColorPicker extends Fieldtype
         '#737373', '#525252', '#404040', '#262626', '#171717', '#0a0a0a',
     ];
 
+    // Enkelt kilde til trin-navngivning — bruges af ThemeColorScale og buildSwatchesWithVars
+    public const STEP_NAMES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+
     public function component(): string
     {
         return 'theme-color-picker';
@@ -90,37 +93,88 @@ class ThemeColorPicker extends Fieldtype
         }, self::LIGHTNESS_STEPS);
     }
 
+    // Scanner theme_settings dynamisk for alle *_color-felter.
+    // Tilføjer man fx test_color i blueprintet, dukker --test-50..--test-950 automatisk op.
+    public static function discoverPalettes($variables): array
+    {
+        $palettes = [];
+
+        foreach ($variables->data()->all() as $key => $value) {
+            if (! str_ends_with($key, '_color')) continue;
+            if (! $value || ! preg_match('/^#[0-9a-fA-F]{3,8}$/', (string) $value)) continue;
+
+            $name       = substr($key, 0, -strlen('_color'));
+            $palettes[] = [
+                'name'  => $name,
+                'color' => $key,
+                'bias'  => $name . '_tones_bias',
+                'sat'   => $name . '_saturation',
+            ];
+        }
+
+        return $palettes;
+    }
+
+    private static function loadVariables()
+    {
+        $global = GlobalSet::findByHandle('theme_settings');
+        if (! $global) return null;
+
+        $vars = $global->in(Site::default()->handle());
+        if ($vars) return $vars;
+
+        // Fallback: prøv alle sites
+        foreach ($global->sites() as $handle) {
+            $vars = $global->in($handle);
+            if ($vars) return $vars;
+        }
+
+        return null;
+    }
+
+    // Returnerer [{hex, var}] — var er CSS-custom-property-navn (fx --primary-500)
+    // eller null for neutraler (ingen CSS-variabel tilknyttet).
+    public static function buildSwatchesWithVars(): array
+    {
+        try {
+            $variables = static::loadVariables();
+            if (! $variables) return [];
+
+            $result = [];
+
+            foreach (static::discoverPalettes($variables) as $palette) {
+                $hex  = (string) $variables->get($palette['color']);
+                $bias = (int) ($variables->get($palette['bias']) ?? 0);
+                $sat  = (int) ($variables->get($palette['sat'])  ?? 0);
+                $name = $palette['name'];
+
+                $result[] = ['hex' => $hex, 'var' => "--{$name}"];
+
+                foreach (static::scale($hex, $bias, $sat) as $i => $scaleHex) {
+                    $step     = self::STEP_NAMES[$i] ?? ($i * 100);
+                    $result[] = ['hex' => $scaleHex, 'var' => "--{$name}-{$step}"];
+                }
+            }
+
+            // Neutraler — ingen CSS-variabel
+            foreach (self::GRAY_STEPS as $hex) {
+                $result[] = ['hex' => $hex, 'var' => null];
+            }
+
+            return $result;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
     public static function buildSwatches(): array
     {
         if (static::$cachedSwatches !== null) return static::$cachedSwatches;
 
-        try {
-            $global = GlobalSet::findByHandle('theme_settings');
-            if (!$global) return [];
-            $variables = $global->in(Site::default()->handle());
-            if (!$variables) return [];
+        $withVars = static::buildSwatchesWithVars();
+        if (empty($withVars)) return [];
 
-            $swatches = [];
-
-            foreach ([
-                ['color' => 'primary_color',    'bias' => 'primary_tones_bias',    'sat' => 'primary_saturation'],
-                ['color' => 'secondary_color',  'bias' => 'secondary_tones_bias',  'sat' => 'secondary_saturation'],
-                ['color' => 'tertiary_color',   'bias' => 'tertiary_tones_bias',   'sat' => 'tertiary_saturation'],
-                ['color' => 'quaternary_color', 'bias' => 'quaternary_tones_bias', 'sat' => 'quaternary_saturation'],
-            ] as $meta) {
-                if (!($hex = $variables->get($meta['color']))) continue;
-                $bias = (int) ($variables->get($meta['bias']) ?? 0);
-                $sat  = (int) ($variables->get($meta['sat'])  ?? 0);
-                $swatches[] = $hex;
-                array_push($swatches, ...static::scale($hex, $bias, $sat));
-            }
-
-            array_push($swatches, ...static::neutralScale());
-
-            return static::$cachedSwatches = $swatches;
-        } catch (\Throwable) {
-            return [];
-        }
+        return static::$cachedSwatches = array_column($withVars, 'hex');
     }
 
     private static function neutralScale(): array

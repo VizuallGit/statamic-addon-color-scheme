@@ -2,6 +2,7 @@
 
 namespace Vizuall\ColorScheme;
 
+use Statamic\Fieldtypes\Bard\Augmentor;
 use Statamic\Providers\AddonServiceProvider as BaseAddonServiceProvider;
 use Statamic\Statamic;
 use Statamic\Modifiers\Modifier;
@@ -31,6 +32,7 @@ class AddonServiceProvider extends BaseAddonServiceProvider
     public function bootAddon(): void
     {
         Modifier::register('contrast_color', Modifiers\ContrastColor::class);
+        Augmentor::addExtension('themeColor', new Marks\ThemeColor);
 
         Statamic::booted(function () {
             $swatches = Fieldtypes\ThemeColorPicker::buildSwatches();

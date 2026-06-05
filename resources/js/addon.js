@@ -817,18 +817,22 @@
                     const current = readActiveColor();
                     div.innerHTML = '';
 
-                    // Header: farvevisning + hex + fjern-knap
+                    // Find hex for current CSS-variabel (til visning i header)
+                    const currentEntry = swatches.find(s => (s.var ? `var(${s.var})` : s.hex) === current);
+                    const currentHex   = currentEntry?.hex || null;
+
+                    // Header: farvevisning + variabel-navn + fjern-knap
                     const header = document.createElement('div');
                     header.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 8px 8px;border-bottom:1px solid #3f3f46;margin-bottom:8px';
 
-                    const swatch = document.createElement('div');
-                    swatch.style.cssText = `width:28px;height:28px;border-radius:50%;background:${current || 'transparent'};border:2px solid ${current ? current : '#52525b'};flex-shrink:0`;
-                    header.appendChild(swatch);
+                    const swatchEl = document.createElement('div');
+                    swatchEl.style.cssText = `width:28px;height:28px;border-radius:50%;background:${currentHex || 'transparent'};border:2px solid ${currentHex ? currentHex : '#52525b'};flex-shrink:0`;
+                    header.appendChild(swatchEl);
 
-                    const hex = document.createElement('span');
-                    hex.style.cssText = 'font-size:12px;font-family:monospace;color:#a1a1aa;flex:1';
-                    hex.textContent = current || 'Ingen farve';
-                    header.appendChild(hex);
+                    const label = document.createElement('span');
+                    label.style.cssText = 'font-size:12px;font-family:monospace;color:#a1a1aa;flex:1';
+                    label.textContent = current || 'Ingen farve';
+                    header.appendChild(label);
 
                     if (current) {
                         const removeBtn = document.createElement('button');
@@ -846,23 +850,24 @@
                     }
                     div.appendChild(header);
 
-                    // Swatch grid
+                    // Swatch grid — gemmer CSS-variabel (var(--primary-500)) eller hex for neutraler
                     const grid = document.createElement('div');
                     grid.style.cssText = `display:grid;grid-template-columns:repeat(${COLS},1fr);gap:4px;padding:0 4px`;
 
-                    swatches.forEach(color => {
+                    swatches.forEach(({ hex, var: cssVar }) => {
+                        const stored = cssVar ? `var(${cssVar})` : hex;
                         const btn    = document.createElement('button');
                         btn.type     = 'button';
-                        btn.title    = color;
-                        const active = color === current;
-                        btn.style.cssText = `width:24px;height:24px;border-radius:50%;background:${color};border:2px solid ${active ? '#fff' : 'transparent'};cursor:pointer;outline:${active ? '2px solid '+color : 'none'};outline-offset:2px;transition:transform .1s`;
+                        btn.title    = cssVar ? `${cssVar} — ${hex}` : hex;
+                        const active = stored === current;
+                        btn.style.cssText = `width:24px;height:24px;border-radius:50%;background:${hex};border:2px solid ${active ? '#fff' : 'transparent'};cursor:pointer;outline:${active ? '2px solid '+hex : 'none'};outline-offset:2px;transition:transform .1s`;
                         btn.onmouseenter = () => { btn.style.transform = 'scale(1.18)'; };
                         btn.onmouseleave = () => { btn.style.transform = 'scale(1)'; };
                         btn.addEventListener('click', () => {
                             if (active) {
                                 props.editor.chain().focus().unsetThemeColor().run();
                             } else {
-                                props.editor.chain().focus().setThemeColor(color).run();
+                                props.editor.chain().focus().setThemeColor(stored).run();
                             }
                             closePortal();
                         });
