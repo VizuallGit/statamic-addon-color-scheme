@@ -24,6 +24,10 @@ class AddonServiceProvider extends BaseAddonServiceProvider
         __DIR__.'/../resources/js/addon.js',
     ];
 
+    protected $routes = [
+        'cp' => __DIR__.'/../routes/cp.php',
+    ];
+
     public function bootAddon(): void
     {
         Modifier::register('contrast_color', Modifiers\ContrastColor::class);

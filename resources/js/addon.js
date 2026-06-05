@@ -780,9 +780,21 @@
                 const isOpen      = ref(false);
                 const activeColor = ref(null);
                 const portalEl    = { value: null };
+                const COLS        = 12;
 
-                const swatches = (Statamic.$config.get('bard-color-picker') || {}).swatches || [];
-                const COLS = 12;
+                // Hent swatches fra CP-route (korrekt timing, ingen boot-problemer)
+                let swatchesCache = null;
+                function fetchSwatches() {
+                    if (swatchesCache !== null) return Promise.resolve(swatchesCache);
+                    const cpRoute = (window.Statamic?.config?.cp_root || '/cp');
+                    return fetch(`${cpRoute}/vizuall/swatches`, {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                    })
+                    .then(r => r.ok ? r.json() : [])
+                    .catch(() => [])
+                    .then(s => { swatchesCache = s; return s; });
+                }
 
                 function readActiveColor() {
                     try {
@@ -795,40 +807,56 @@
                 function updatePos() {
                     if (!container.value || !portalEl.value) return;
                     const r  = container.value.getBoundingClientRect();
-                    const pw = portalEl.value.offsetWidth || 280;
+                    const pw = portalEl.value.offsetWidth || 340;
                     portalEl.value.style.left = Math.max(4, Math.min(r.left, window.innerWidth - pw - 4)) + 'px';
                     portalEl.value.style.top  = (r.bottom + 4) + 'px';
                 }
 
-                function buildPortalContent() {
+                function buildPortalContent(swatches) {
                     const div     = portalEl.value;
                     const current = readActiveColor();
                     div.innerHTML = '';
 
+                    // Header: farvevisning + hex + fjern-knap
+                    const header = document.createElement('div');
+                    header.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 8px 8px;border-bottom:1px solid #3f3f46;margin-bottom:8px';
+
+                    const swatch = document.createElement('div');
+                    swatch.style.cssText = `width:28px;height:28px;border-radius:50%;background:${current || 'transparent'};border:2px solid ${current ? current : '#52525b'};flex-shrink:0`;
+                    header.appendChild(swatch);
+
+                    const hex = document.createElement('span');
+                    hex.style.cssText = 'font-size:12px;font-family:monospace;color:#a1a1aa;flex:1';
+                    hex.textContent = current || 'Ingen farve';
+                    header.appendChild(hex);
+
                     if (current) {
                         const removeBtn = document.createElement('button');
                         removeBtn.type = 'button';
-                        removeBtn.textContent = '✕ Fjern farve';
-                        removeBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:4px 8px;margin-bottom:6px;font-size:11px;cursor:pointer;border:none;border-radius:4px;background:transparent;color:#f87171';
-                        removeBtn.onmouseenter = () => { removeBtn.style.background = 'rgba(248,113,113,.12)'; };
-                        removeBtn.onmouseleave = () => { removeBtn.style.background = 'transparent'; };
+                        removeBtn.innerHTML = '&times;';
+                        removeBtn.title = 'Fjern farve';
+                        removeBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:#a1a1aa;font-size:16px;line-height:1;padding:0 4px;border-radius:4px';
+                        removeBtn.onmouseenter = () => { removeBtn.style.color = '#f87171'; };
+                        removeBtn.onmouseleave = () => { removeBtn.style.color = '#a1a1aa'; };
                         removeBtn.addEventListener('click', () => {
                             props.editor.chain().focus().unsetThemeColor().run();
                             closePortal();
                         });
-                        div.appendChild(removeBtn);
+                        header.appendChild(removeBtn);
                     }
+                    div.appendChild(header);
 
+                    // Swatch grid
                     const grid = document.createElement('div');
-                    grid.style.cssText = `display:grid;grid-template-columns:repeat(${COLS},1fr);gap:3px`;
+                    grid.style.cssText = `display:grid;grid-template-columns:repeat(${COLS},1fr);gap:4px;padding:0 4px`;
 
                     swatches.forEach(color => {
                         const btn    = document.createElement('button');
                         btn.type     = 'button';
                         btn.title    = color;
                         const active = color === current;
-                        btn.style.cssText = `width:20px;height:20px;border-radius:50%;background:${color};border:2px solid ${active ? '#fff' : 'transparent'};cursor:pointer;outline:${active ? '2px solid ' + color : 'none'};outline-offset:1px;transition:transform .1s`;
-                        btn.onmouseenter = () => { btn.style.transform = 'scale(1.2)'; };
+                        btn.style.cssText = `width:24px;height:24px;border-radius:50%;background:${color};border:2px solid ${active ? '#fff' : 'transparent'};cursor:pointer;outline:${active ? '2px solid '+color : 'none'};outline-offset:2px;transition:transform .1s`;
+                        btn.onmouseenter = () => { btn.style.transform = 'scale(1.18)'; };
                         btn.onmouseleave = () => { btn.style.transform = 'scale(1)'; };
                         btn.addEventListener('click', () => {
                             if (active) {
@@ -840,19 +868,26 @@
                         });
                         grid.appendChild(btn);
                     });
-
                     div.appendChild(grid);
                 }
 
                 function openPortal() {
                     if (portalEl.value) return;
                     const div = document.createElement('div');
-                    div.style.cssText = 'position:fixed;z-index:99999;background:#18181b;border:1px solid #3f3f46;border-radius:8px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.6)';
+                    div.style.cssText = 'position:fixed;z-index:99999;background:#18181b;border:1px solid #3f3f46;border-radius:10px;padding:8px 4px;box-shadow:0 8px 32px rgba(0,0,0,.7);min-width:200px';
                     document.body.appendChild(div);
                     portalEl.value = div;
-                    buildPortalContent();
+
+                    // Vis loading-state mens swatches hentes
+                    div.innerHTML = '<div style="padding:12px;text-align:center;color:#71717a;font-size:12px">Henter farver…</div>';
                     window.addEventListener('scroll', updatePos, true);
                     requestAnimationFrame(updatePos);
+
+                    fetchSwatches().then(swatches => {
+                        if (!portalEl.value) return;
+                        buildPortalContent(swatches);
+                        requestAnimationFrame(updatePos);
+                    });
                 }
 
                 function closePortal() {
@@ -891,12 +926,9 @@
                 });
 
                 function brushSvg(color) {
-                    return h('svg', { width: '14', height: '14', viewBox: '0 0 24 24', fill: 'none' }, [
-                        h('path', {
-                            fill: 'currentColor',
-                            d: 'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37-1.34-1.34a1 1 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a1 1 0 0 0 0-1.41z',
-                        }),
-                        color ? h('rect', { x: '2', y: '21', width: '20', height: '2', rx: '1', fill: color }) : null,
+                    return h('svg', { width: '14', height: '14', viewBox: '0 0 24 24' }, [
+                        h('path', { fill: 'currentColor', d: 'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37-1.34-1.34a1 1 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a1 1 0 0 0 0-1.41z' }),
+                        color ? h('rect', { x: '1', y: '21', width: '22', height: '2.5', rx: '1.25', fill: color }) : null,
                     ]);
                 }
 
@@ -908,11 +940,7 @@
                             class: ['bard-toolbar-button', isOpen.value && 'active'].filter(Boolean).join(' '),
                             title: 'Tekstfarve',
                             onClick: toggle,
-                        }, [
-                            h('span', { style: 'display:inline-flex;flex-direction:column;align-items:center;gap:1px' }, [
-                                brushSvg(color),
-                            ]),
-                        ]),
+                        }, [ brushSvg(color) ]),
                     ]);
                 };
             },
