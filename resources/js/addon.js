@@ -708,6 +708,203 @@
 
     });
 
+    // ── Bard color mark + toolbar button ─────────────────────────────────────
+    Statamic.booting(() => {
+        const { h, ref, onMounted, onUnmounted } = window.Vue;
+
+        // 1. TipTap mark — wraps text in <span style="color: #xxx">
+        Statamic.$bard.addExtension(({ tiptap }) => {
+            return tiptap.core.Mark.create({
+                name: 'themeColor',
+                priority: 1000,
+
+                addAttributes() {
+                    return {
+                        color: {
+                            default: null,
+                            parseHTML: el => {
+                                const m = (el.getAttribute('style') || '').match(/(?:^|;)\s*color:\s*([^;]+)/);
+                                return m ? m[1].trim() : null;
+                            },
+                            renderHTML: attrs => attrs.color ? { style: `color: ${attrs.color}` } : {},
+                        },
+                    };
+                },
+
+                parseHTML() {
+                    return [{
+                        tag: 'span',
+                        getAttrs: el => {
+                            const m = (el.getAttribute('style') || '').match(/(?:^|;)\s*color:\s*([^;]+)/);
+                            if (!m) return false;
+                            return { color: m[1].trim() };
+                        },
+                    }];
+                },
+
+                renderHTML({ HTMLAttributes }) {
+                    return ['span', HTMLAttributes, 0];
+                },
+
+                addCommands() {
+                    return {
+                        setThemeColor:   color => ({ commands }) => commands.setMark(this.name, { color }),
+                        unsetThemeColor: ()    => ({ commands }) => commands.unsetMark(this.name),
+                    };
+                },
+            });
+        });
+
+        // 2. Toolbar button — paint brush icon, swatch dropdown via portal
+        Statamic.$components.register('bard-button-color', {
+            props: {
+                editor: { type: Object, required: true },
+                bard:   { type: Object, default: null },
+            },
+            setup(props) {
+                const container   = ref(null);
+                const isOpen      = ref(false);
+                const activeColor = ref(null);
+                const portalEl    = { value: null };
+
+                const swatches = (Statamic.$config.get('bard-color-picker') || {}).swatches || [];
+                const COLS = 12;
+
+                function readActiveColor() {
+                    try {
+                        const marks = props.editor.state.selection.$from.marks();
+                        const mark  = marks.find(m => m.type.name === 'themeColor');
+                        return mark?.attrs?.color ?? null;
+                    } catch { return null; }
+                }
+
+                function updatePos() {
+                    if (!container.value || !portalEl.value) return;
+                    const r  = container.value.getBoundingClientRect();
+                    const pw = portalEl.value.offsetWidth || 280;
+                    portalEl.value.style.left = Math.max(4, Math.min(r.left, window.innerWidth - pw - 4)) + 'px';
+                    portalEl.value.style.top  = (r.bottom + 4) + 'px';
+                }
+
+                function buildPortalContent() {
+                    const div     = portalEl.value;
+                    const current = readActiveColor();
+                    div.innerHTML = '';
+
+                    if (current) {
+                        const removeBtn = document.createElement('button');
+                        removeBtn.type = 'button';
+                        removeBtn.textContent = '✕ Fjern farve';
+                        removeBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:4px 8px;margin-bottom:6px;font-size:11px;cursor:pointer;border:none;border-radius:4px;background:transparent;color:#f87171';
+                        removeBtn.onmouseenter = () => { removeBtn.style.background = 'rgba(248,113,113,.12)'; };
+                        removeBtn.onmouseleave = () => { removeBtn.style.background = 'transparent'; };
+                        removeBtn.addEventListener('click', () => {
+                            props.editor.chain().focus().unsetThemeColor().run();
+                            closePortal();
+                        });
+                        div.appendChild(removeBtn);
+                    }
+
+                    const grid = document.createElement('div');
+                    grid.style.cssText = `display:grid;grid-template-columns:repeat(${COLS},1fr);gap:3px`;
+
+                    swatches.forEach(color => {
+                        const btn    = document.createElement('button');
+                        btn.type     = 'button';
+                        btn.title    = color;
+                        const active = color === current;
+                        btn.style.cssText = `width:20px;height:20px;border-radius:50%;background:${color};border:2px solid ${active ? '#fff' : 'transparent'};cursor:pointer;outline:${active ? '2px solid ' + color : 'none'};outline-offset:1px;transition:transform .1s`;
+                        btn.onmouseenter = () => { btn.style.transform = 'scale(1.2)'; };
+                        btn.onmouseleave = () => { btn.style.transform = 'scale(1)'; };
+                        btn.addEventListener('click', () => {
+                            if (active) {
+                                props.editor.chain().focus().unsetThemeColor().run();
+                            } else {
+                                props.editor.chain().focus().setThemeColor(color).run();
+                            }
+                            closePortal();
+                        });
+                        grid.appendChild(btn);
+                    });
+
+                    div.appendChild(grid);
+                }
+
+                function openPortal() {
+                    if (portalEl.value) return;
+                    const div = document.createElement('div');
+                    div.style.cssText = 'position:fixed;z-index:99999;background:#18181b;border:1px solid #3f3f46;border-radius:8px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.6)';
+                    document.body.appendChild(div);
+                    portalEl.value = div;
+                    buildPortalContent();
+                    window.addEventListener('scroll', updatePos, true);
+                    requestAnimationFrame(updatePos);
+                }
+
+                function closePortal() {
+                    if (!portalEl.value) return;
+                    document.body.removeChild(portalEl.value);
+                    portalEl.value = null;
+                    window.removeEventListener('scroll', updatePos, true);
+                    isOpen.value = false;
+                }
+
+                function toggle() {
+                    isOpen.value ? closePortal() : (isOpen.value = true, openPortal());
+                }
+
+                function handleOutsideClick(e) {
+                    if (!isOpen.value) return;
+                    if (container.value?.contains(e.target) || portalEl.value?.contains(e.target)) return;
+                    closePortal();
+                }
+
+                function onEditorUpdate() {
+                    activeColor.value = readActiveColor();
+                }
+
+                onMounted(() => {
+                    document.addEventListener('mousedown', handleOutsideClick);
+                    props.editor?.on('selectionUpdate', onEditorUpdate);
+                    props.editor?.on('transaction',     onEditorUpdate);
+                });
+
+                onUnmounted(() => {
+                    document.removeEventListener('mousedown', handleOutsideClick);
+                    props.editor?.off('selectionUpdate', onEditorUpdate);
+                    props.editor?.off('transaction',     onEditorUpdate);
+                    closePortal();
+                });
+
+                function brushSvg(color) {
+                    return h('svg', { width: '14', height: '14', viewBox: '0 0 24 24', fill: 'none' }, [
+                        h('path', {
+                            fill: 'currentColor',
+                            d: 'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37-1.34-1.34a1 1 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a1 1 0 0 0 0-1.41z',
+                        }),
+                        color ? h('rect', { x: '2', y: '21', width: '20', height: '2', rx: '1', fill: color }) : null,
+                    ]);
+                }
+
+                return () => {
+                    const color = activeColor.value;
+                    return h('div', { ref: container, style: 'display:inline-flex' }, [
+                        h('button', {
+                            type: 'button',
+                            class: ['bard-toolbar-button', isOpen.value && 'active'].filter(Boolean).join(' '),
+                            title: 'Tekstfarve',
+                            onClick: toggle,
+                        }, [
+                            h('span', { style: 'display:inline-flex;flex-direction:column;align-items:center;gap:1px' }, [
+                                brushSvg(color),
+                            ]),
+                        ]),
+                    ]);
+                };
+            },
+        });
+    });
+
     // Auto-open a replicator set on page load:
     //   #open=N      → Nth top-level [data-replicator-set] (page sections)
     //   ?cs=N#colors → Nth [data-replicator-set][data-type="color_scheme"]
