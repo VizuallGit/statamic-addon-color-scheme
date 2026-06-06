@@ -33,13 +33,15 @@ class AddonServiceProvider extends BaseAddonServiceProvider
     {
         Modifier::register('contrast_color', Modifiers\ContrastColor::class);
         Augmentor::addExtension('themeColor', new Marks\ThemeColor);
+        Augmentor::addExtension('vizuStyle', new Marks\VizuStyle);
 
         Statamic::booted(function () {
-            $swatches = Fieldtypes\ThemeColorPicker::buildSwatches();
-            Statamic::provideToScript(['bard-color-picker' => [
-                'swatches'  => $swatches,
-                'allow_any' => true,
-            ]]);
+            $swatches     = Fieldtypes\ThemeColorPicker::buildSwatches();
+            $inlineStyles = config('statamic.vizuall_bard_styles.styles', []);
+            Statamic::provideToScript([
+                'bard-color-picker'    => ['swatches' => $swatches, 'allow_any' => true],
+                'vizuall-bard-styles'  => $inlineStyles,
+            ]);
         });
     }
 }

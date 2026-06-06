@@ -708,6 +708,35 @@
 
     });
 
+    // ── Hjælpefunktioner til vizuStyle CSS-string manipulation ──────────────
+    function setCssProp(styleStr, prop, value) {
+        const parts = (styleStr || '').split(';').map(s => s.trim()).filter(Boolean);
+        const escaped = prop.replace(/[-]/g, '\\-');
+        const filtered = parts.filter(p => !new RegExp(`^${escaped}\\s*:`,'i').test(p));
+        if (value !== null && value !== undefined) filtered.push(`${prop}: ${value}`);
+        return filtered.join('; ') || null;
+    }
+
+    function readVizuProp(editor, prop) {
+        try {
+            const { state } = editor;
+            const { from, to } = state.selection;
+            const vizuType = state.schema.marks.vizuStyle;
+            if (!vizuType) return null;
+            let value = null;
+            const escaped = prop.replace(/[-]/g, '\\-');
+            const r = new RegExp(`(?:^|;)\\s*${escaped}:\\s*([^;]+)`, 'i');
+            state.doc.nodesBetween(from, to === from ? to + 1 : to, node => {
+                if (value) return false;
+                if (node.isText) {
+                    const m = node.marks.find(m => m.type === vizuType);
+                    if (m?.attrs.style) { const match = m.attrs.style.match(r); if (match) value = match[1].trim(); }
+                }
+            });
+            return value;
+        } catch { return null; }
+    }
+
     // ── Delt swatch-fetch (cached, bruges af CSS-injektion og toolbar-knap) ──
     let _swatchesCache = null;
     function fetchSwatches() {
@@ -754,7 +783,142 @@
     Statamic.booting(() => {
         const { h, ref, onMounted, onUnmounted } = window.Vue;
 
-        // 1. TipTap mark — wraps text in <span style="color: #xxx">
+        // 0a. vizuStyle — combined inline style mark (color + font-size + text-transform + ...)
+        Statamic.$bard.addExtension(({ tiptap }) => {
+            return tiptap.core.Mark.create({
+                name: 'vizuStyle',
+                priority: 1000,
+
+                addAttributes() {
+                    return {
+                        style: {
+                            default: null,
+                            parseHTML: el => el.getAttribute('style') || null,
+                            renderHTML: attrs => attrs.style ? { 'data-vizu': '', style: attrs.style } : {},
+                        },
+                    };
+                },
+
+                parseHTML() {
+                    return [{ tag: 'span[data-vizu]' }];
+                },
+
+                renderHTML({ HTMLAttributes }) {
+                    return ['span', HTMLAttributes, 0];
+                },
+
+                addCommands() {
+                    const applyVizu = fn => ({ tr, state, dispatch }) => {
+                        const vizuType = state.schema.marks.vizuStyle;
+                        if (!vizuType) return false;
+                        const { from, to } = state.selection;
+                        const nodes = [];
+                        state.doc.nodesBetween(from, to, (node, pos) => { if (node.isText) nodes.push({ node, pos }); });
+                        nodes.forEach(({ node, pos }) => {
+                            const m        = node.marks.find(m => m.type === vizuType);
+                            const newStyle = fn(m?.attrs.style || null);
+                            if (m) tr.removeMark(pos, pos + node.nodeSize, vizuType);
+                            if (newStyle) tr.addMark(pos, pos + node.nodeSize, vizuType.create({ style: newStyle }));
+                        });
+                        if (dispatch) dispatch(tr);
+                        return true;
+                    };
+                    return {
+                        setVizuProp:   (prop, val) => applyVizu(s => setCssProp(s, prop, val)),
+                        clearVizuProp: prop        => applyVizu(s => setCssProp(s, prop, null)),
+                    };
+                },
+            });
+        });
+
+        // 0b. Migrator: convert old themeColor + btsSpan marks → vizuStyle on editor create
+        Statamic.$bard.addExtension(({ tiptap }) => {
+            const BTSSPAN_MAP = (() => {
+                const styles = Statamic.$config.get('vizuall-bard-styles') || [];
+                const map = {};
+                styles.forEach(s => { map[s.handle.replace(/_/g, '-')] = { prop: s.prop, value: s.value }; });
+                return map;
+            })();
+
+            return tiptap.core.Extension.create({
+                name: 'vizuStyleMigrator',
+                onCreate() {
+                    const { schema, doc } = this.editor.state;
+                    const tcType  = schema.marks.themeColor;
+                    const btsType = schema.marks.btsSpan;
+                    const vzType  = schema.marks.vizuStyle;
+                    if (!vzType) return;
+                    const ops = [];
+                    doc.descendants((node, pos) => {
+                        if (!node.isText) return;
+                        const tc   = tcType  && node.marks.find(m => m.type === tcType);
+                        const btss = btsType ? node.marks.filter(m => m.type === btsType) : [];
+                        const vz   = node.marks.find(m => m.type === vzType);
+                        if (!tc && !btss.length) return;
+                        let style = vz?.attrs.style || null;
+                        const removals = [];
+                        if (tc) { style = setCssProp(style, 'color', tc.attrs.color); removals.push(tc); }
+                        btss.forEach(m => {
+                            const def = BTSSPAN_MAP[m.attrs.class || ''];
+                            if (def) style = setCssProp(style, def.prop, def.value);
+                            removals.push(m);
+                        });
+                        ops.push({ pos, size: node.nodeSize, vz, removals, style });
+                    });
+                    if (!ops.length) return;
+                    const tr = this.editor.state.tr;
+                    ops.forEach(({ pos, size, vz, removals, style }) => {
+                        removals.forEach(m => tr.removeMark(pos, pos + size, m));
+                        if (vz) tr.removeMark(pos, pos + size, vzType);
+                        if (style) tr.addMark(pos, pos + size, vzType.create({ style }));
+                    });
+                    tr.setMeta('vizuMigrate', true);
+                    this.editor.view.dispatch(tr);
+                },
+            });
+        });
+
+        // 0c. Toolbar-knapper for konfigurerede inline styles
+        (() => {
+            const bardStyles = Statamic.$config.get('vizuall-bard-styles') || [];
+            bardStyles.forEach(style => {
+                Statamic.$bard.buttons(buttons => {
+                    buttons.push({ name: `vizu-${style.handle}`, text: style.name, component: `bard-btn-vizu-${style.handle}`, html: style.ident || '?' });
+                });
+                Statamic.$components.register(`bard-btn-vizu-${style.handle}`, {
+                    props: { editor: { type: Object, required: true } },
+                    setup(props) {
+                        const isActive = ref(false);
+                        function check() {
+                            isActive.value = readVizuProp(props.editor, style.prop) === style.value;
+                        }
+                        onMounted(() => {
+                            props.editor?.on('selectionUpdate', check);
+                            props.editor?.on('transaction', check);
+                        });
+                        onUnmounted(() => {
+                            props.editor?.off('selectionUpdate', check);
+                            props.editor?.off('transaction', check);
+                        });
+                        function toggle() {
+                            if (isActive.value) {
+                                props.editor.chain().focus().extendMarkRange('vizuStyle').clearVizuProp(style.prop).run();
+                            } else {
+                                props.editor.chain().focus().extendMarkRange('vizuStyle').setVizuProp(style.prop, style.value).run();
+                            }
+                        }
+                        return () => h('button', {
+                            type: 'button',
+                            class: ['bard-toolbar-button', isActive.value && 'active'].filter(Boolean).join(' '),
+                            title: style.name,
+                            onClick: toggle,
+                        }, style.ident || '?');
+                    },
+                });
+            });
+        })();
+
+        // 1. TipTap mark — wraps text in <span style="color: #xxx"> (bevares for bagudkompatibilitet)
         Statamic.$bard.addExtension(({ tiptap }) => {
             return tiptap.core.Mark.create({
                 name: 'themeColor',
@@ -813,6 +977,9 @@
                 // Bruger den delte fetchSwatches fra IIFE-scope
 
                 function readActiveColor() {
+                    // Tjek vizuStyle først (ny format), fall back til themeColor (gammel format)
+                    const vizuColor = readVizuProp(props.editor, 'color');
+                    if (vizuColor) return vizuColor;
                     try {
                         const { state }  = props.editor;
                         const { from, to } = state.selection;
@@ -869,7 +1036,7 @@
                         removeBtn.onmouseenter = () => { removeBtn.style.color = '#f87171'; };
                         removeBtn.onmouseleave = () => { removeBtn.style.color = '#a1a1aa'; };
                         removeBtn.addEventListener('click', () => {
-                            props.editor.chain().focus().extendMarkRange('themeColor').unsetThemeColor().run();
+                            props.editor.chain().focus().extendMarkRange('vizuStyle').clearVizuProp('color').run();
                             closePortal();
                         });
                         header.appendChild(removeBtn);
@@ -891,9 +1058,9 @@
                         btn.onmouseleave = () => { btn.style.transform = 'scale(1)'; };
                         btn.addEventListener('click', () => {
                             if (active) {
-                                props.editor.chain().focus().extendMarkRange('themeColor').unsetThemeColor().run();
+                                props.editor.chain().focus().extendMarkRange('vizuStyle').clearVizuProp('color').run();
                             } else {
-                                props.editor.chain().focus().extendMarkRange('themeColor').setThemeColor(stored).run();
+                                props.editor.chain().focus().extendMarkRange('vizuStyle').setVizuProp('color', stored).run();
                             }
                             closePortal();
                         });
