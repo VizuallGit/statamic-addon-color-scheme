@@ -859,7 +859,7 @@
                         removeBtn.onmouseenter = () => { removeBtn.style.color = '#f87171'; };
                         removeBtn.onmouseleave = () => { removeBtn.style.color = '#a1a1aa'; };
                         removeBtn.addEventListener('click', () => {
-                            props.editor.chain().focus().unsetThemeColor().run();
+                            props.editor.chain().focus().extendMarkRange('themeColor').unsetThemeColor().run();
                             closePortal();
                         });
                         header.appendChild(removeBtn);
@@ -881,9 +881,9 @@
                         btn.onmouseleave = () => { btn.style.transform = 'scale(1)'; };
                         btn.addEventListener('click', () => {
                             if (active) {
-                                props.editor.chain().focus().unsetThemeColor().run();
+                                props.editor.chain().focus().extendMarkRange('themeColor').unsetThemeColor().run();
                             } else {
-                                props.editor.chain().focus().setThemeColor(stored).run();
+                                props.editor.chain().focus().extendMarkRange('themeColor').setThemeColor(stored).run();
                             }
                             closePortal();
                         });
