@@ -831,6 +831,27 @@
             });
         });
 
+        // 0b-pre. btsSpan mark — nødvendig for at Tiptap kan loade gammelt indhold.
+        // Migratoren konverterer det straks til vizuStyle ved editor create.
+        Statamic.$bard.addExtension(({ tiptap }) => {
+            return tiptap.core.Mark.create({
+                name: 'btsSpan',
+                priority: 100,
+                addAttributes() {
+                    return { class: { default: null } };
+                },
+                parseHTML() {
+                    return [
+                        { tag: 'span[data-bts-style]', getAttrs: el => ({ class: el.getAttribute('data-bts-style') }) },
+                        { tag: 'span[class]',           getAttrs: el => ({ class: el.getAttribute('class') || null }) },
+                    ];
+                },
+                renderHTML({ HTMLAttributes }) {
+                    return ['span', HTMLAttributes, 0];
+                },
+            });
+        });
+
         // 0b. Migrator: convert old themeColor + btsSpan marks → vizuStyle on editor create
         Statamic.$bard.addExtension(({ tiptap }) => {
             const BTSSPAN_MAP = (() => {
