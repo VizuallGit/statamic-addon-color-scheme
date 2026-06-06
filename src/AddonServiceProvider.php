@@ -34,13 +34,16 @@ class AddonServiceProvider extends BaseAddonServiceProvider
         Modifier::register('contrast_color', Modifiers\ContrastColor::class);
         Augmentor::addExtension('themeColor', new Marks\ThemeColor);
         Augmentor::addExtension('vizuStyle', new Marks\VizuStyle);
+        // Erstatter bard-texstyle's btsSpan — renderer old indhold med inline styles
+        Augmentor::addExtension('btsSpan', new Marks\BtsSpan);
+        Augmentor::addExtension('vizuParagraphStyle', new Extensions\VizuParagraphStyle);
 
         Statamic::booted(function () {
-            $swatches     = Fieldtypes\ThemeColorPicker::buildSwatches();
-            $inlineStyles = config('statamic.vizuall_bard_styles.styles', []);
+            $swatches  = Fieldtypes\ThemeColorPicker::buildSwatches();
+            $allStyles = config('statamic.vizuall_bard_styles.styles', []);
             Statamic::provideToScript([
-                'bard-color-picker'    => ['swatches' => $swatches, 'allow_any' => true],
-                'vizuall-bard-styles'  => $inlineStyles,
+                'bard-color-picker'   => ['swatches' => $swatches, 'allow_any' => true],
+                'vizuall-bard-styles' => $allStyles,
             ]);
         });
     }

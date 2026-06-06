@@ -878,10 +878,51 @@
             });
         });
 
-        // 0c. Toolbar-knapper for konfigurerede inline styles
+        // 0c. Paragraph-style Tiptap-extension (vizuClass-attribut på <p>/<h1>)
+        Statamic.$bard.addExtension(({ tiptap }) => {
+            const paragraphStyles = (Statamic.$config.get('vizuall-bard-styles') || [])
+                .filter(s => s.type === 'paragraph' && s.class);
+            if (!paragraphStyles.length) return tiptap.core.Extension.create({ name: 'vizuParaNoop' });
+
+            const knownClasses = new Set(paragraphStyles.map(s => s.class));
+            return tiptap.core.Extension.create({
+                name: 'vizuParagraphStyle',
+                addGlobalAttributes() {
+                    return [{
+                        types: ['paragraph', 'heading'],
+                        attributes: {
+                            vizuClass: {
+                                default: null,
+                                parseHTML: el => {
+                                    for (const cls of knownClasses) {
+                                        if (el.classList.contains(cls)) return cls;
+                                    }
+                                    return null;
+                                },
+                                renderHTML: attrs => attrs.vizuClass ? { class: attrs.vizuClass } : {},
+                            },
+                        },
+                    }];
+                },
+            });
+        });
+
+        // 0d. Injicér CP-preview CSS for paragraph-styles
+        (() => {
+            const paragraphStyles = (Statamic.$config.get('vizuall-bard-styles') || [])
+                .filter(s => s.type === 'paragraph' && s.class && s.cp_css);
+            if (!paragraphStyles.length) return;
+            const css = paragraphStyles.map(s => `.ProseMirror .${s.class} { ${s.cp_css} }`).join('\n');
+            const el  = document.createElement('style');
+            el.textContent = css;
+            document.head.appendChild(el);
+        })();
+
+        // 0e. Toolbar-knapper for alle konfigurerede styles (span + paragraph)
         (() => {
             const bardStyles = Statamic.$config.get('vizuall-bard-styles') || [];
             bardStyles.forEach(style => {
+                const isParagraph = style.type === 'paragraph';
                 Statamic.$bard.buttons(buttons => {
                     buttons.push({ name: `vizu-${style.handle}`, text: style.name, component: `bard-btn-vizu-${style.handle}`, html: style.ident || '?' });
                 });
@@ -890,7 +931,12 @@
                     setup(props) {
                         const isActive = ref(false);
                         function check() {
-                            isActive.value = readVizuProp(props.editor, style.prop) === style.value;
+                            if (isParagraph) {
+                                const attrs = props.editor.getAttributes('paragraph');
+                                isActive.value = attrs.vizuClass === style.class;
+                            } else {
+                                isActive.value = readVizuProp(props.editor, style.prop) === style.value;
+                            }
                         }
                         onMounted(() => {
                             props.editor?.on('selectionUpdate', check);
@@ -901,7 +947,12 @@
                             props.editor?.off('transaction', check);
                         });
                         function toggle() {
-                            if (isActive.value) {
+                            if (isParagraph) {
+                                const cur = props.editor.getAttributes('paragraph').vizuClass;
+                                props.editor.chain().focus()
+                                    .updateAttributes('paragraph', { vizuClass: cur === style.class ? null : style.class })
+                                    .run();
+                            } else if (isActive.value) {
                                 props.editor.chain().focus().extendMarkRange('vizuStyle').clearVizuProp(style.prop).run();
                             } else {
                                 props.editor.chain().focus().extendMarkRange('vizuStyle').setVizuProp(style.prop, style.value).run();
