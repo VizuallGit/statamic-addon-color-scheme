@@ -814,9 +814,19 @@
 
                 function readActiveColor() {
                     try {
-                        const marks = props.editor.state.selection.$from.marks();
-                        const mark  = marks.find(m => m.type.name === 'themeColor');
-                        return mark?.attrs?.color ?? null;
+                        const { state }  = props.editor;
+                        const { from, to } = state.selection;
+                        const markType   = state.schema.marks.themeColor;
+                        if (!markType) return null;
+                        let color = null;
+                        state.doc.nodesBetween(from, to === from ? to + 1 : to, (node) => {
+                            if (color) return false;
+                            if (node.isText) {
+                                const m = node.marks.find(m => m.type === markType);
+                                if (m) color = m.attrs.color;
+                            }
+                        });
+                        return color;
                     } catch { return null; }
                 }
 
