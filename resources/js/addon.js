@@ -1410,12 +1410,15 @@
             };
         }
 
-        // Registrér knapper via makeButton factory — nødvendigt for at vises i picker
+        // Registrér knapper via makeButton factory.
+        // splice(0,0,...) indsætter FORREST i arrayet så knapperne er synlige i første række.
         Statamic.$bard.buttons((buttons, makeButton) => {
+            const toAdd = [];
+
             Object.entries(groupedMap).forEach(([groupName, groupStyles]) => {
                 const meta      = allGroups[groupName] || {};
                 const slug      = groupName.replace(/_/g, '-');
-                buttons.push(makeButton({
+                toAdd.push(makeButton({
                     name:      `vizu-group-${slug}`,
                     text:      meta.name || groupName,
                     html:      meta.ident || groupName[0].toUpperCase(),
@@ -1425,13 +1428,17 @@
 
             ungrouped.forEach(style => {
                 const slug = style.handle.replace(/_/g, '-');
-                buttons.push(makeButton({
+                toAdd.push(makeButton({
                     name:      `vizu-${slug}`,
                     text:      style.name,
                     html:      style.ident || '?',
                     component: buildIndividualComponent(style),
                 }));
             });
+
+            // Filtrer nulls (toolbar-kontekst: makeButton returnerer null hvis ikke konfigureret)
+            const valid = toAdd.filter(Boolean);
+            if (valid.length) buttons.splice(0, 0, ...valid);
         });
     });
 
