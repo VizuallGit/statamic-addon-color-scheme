@@ -751,8 +751,10 @@
         .then(s => { _swatchesCache = s; return s; });
     }
 
-    // Injicér tema-CSS-variabler i CP så var(--primary-500) virker i Bard-editoren
+    // Injicér tema-CSS-variabler i CP så var(--primary-500) og var(--size-N) virker i Bard-editoren
     Statamic.booting(() => {
+        const cpRoot = document.querySelector('meta[name="cp-root"]')?.content || '/cp';
+
         fetchSwatches().then(swatches => {
             if (!swatches.length) return;
             const css = swatches
@@ -761,6 +763,21 @@
                 .join(';');
             const style = document.createElement('style');
             style.id = 'cp-theme-vars';
+            style.textContent = `:root{${css}}`;
+            document.head.appendChild(style);
+        });
+
+        fetch(`${cpRoot}/vizuall/size-vars`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        })
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => [])
+        .then(sizeVars => {
+            if (!sizeVars.length) return;
+            const css = sizeVars.map(s => `--${s.handle}:${s.value}`).join(';');
+            const style = document.createElement('style');
+            style.id = 'cp-size-vars';
             style.textContent = `:root{${css}}`;
             document.head.appendChild(style);
         });
@@ -1251,11 +1268,12 @@
         // Byg Vue-komponent for gruppe-dropdown
         function buildGroupComponent(groupName, groupStyles, groupMeta) {
             return {
-                props: { editor: { type: Object, required: true }, button: { type: Object, default: null }, bard: { type: Object, default: null } },
+                props: { editor: { type: Object, required: true }, button: { type: Object, default: null }, bard: { type: Object, default: null }, config: { type: Object, default: null } },
                 setup(props) {
-                    const container = ref(null);
-                    const isOpen    = ref(false);
-                    const portalEl  = { value: null };
+                    const container   = ref(null);
+                    const isOpen      = ref(false);
+                    const portalEl    = { value: null };
+                    const activeStyle = ref(null);
 
                     function getActive() {
                         for (const s of groupStyles) {
@@ -1336,12 +1354,16 @@
                         closePortal();
                     }
 
-                    function onEditorUpdate() { if (portalEl.value) buildContent(); }
+                    function onEditorUpdate() {
+                        queueMicrotask(() => { activeStyle.value = getActive(); });
+                        if (portalEl.value) buildContent();
+                    }
 
                     onMounted(() => {
                         document.addEventListener('mousedown', handleOutside);
                         props.editor?.on('selectionUpdate', onEditorUpdate);
                         props.editor?.on('transaction', onEditorUpdate);
+                        activeStyle.value = getActive();
                     });
                     onUnmounted(() => {
                         document.removeEventListener('mousedown', handleOutside);
@@ -1351,11 +1373,11 @@
                     });
 
                     return () => {
-                        const active = getActive();
+                        const active = activeStyle.value;
                         return h('div', { ref: container, style: 'display:inline-flex' }, [
                             h('button', {
                                 type: 'button',
-                                class: ['bard-toolbar-button', (isOpen.value || active) && 'active'].filter(Boolean).join(' '),
+                                class: ['bard-toolbar-button', (isOpen.value || !!active) && 'active'].filter(Boolean).join(' '),
                                 title: groupMeta.name || groupName,
                                 onClick: toggle,
                             }, active ? active.ident : (groupMeta.ident || groupName[0].toUpperCase())),
@@ -1369,17 +1391,21 @@
         function buildIndividualComponent(style) {
             const isParagraph = style.type === 'paragraph';
             return {
-                props: { editor: { type: Object, required: true }, button: { type: Object, default: null } },
+                props: { editor: { type: Object, required: true }, button: { type: Object, default: null }, bard: { type: Object, default: null }, config: { type: Object, default: null } },
                 setup(props) {
                     const isActive = ref(false);
 
                     function check() {
-                        if (isParagraph) {
-                            const attrs = props.editor.getAttributes('vizuSpanClass');
-                            isActive.value = attrs?.class === style.class;
-                        } else {
-                            isActive.value = readVizuProp(props.editor, style.prop) === style.value;
-                        }
+                        // Defer ref-opdatering til efter ProseMirror-dispatch er færdig.
+                        // Synkrone ref-opdateringer i transaction-handler crasher Vue's renderer.
+                        queueMicrotask(() => {
+                            if (isParagraph) {
+                                const attrs = props.editor.getAttributes('vizuSpanClass');
+                                isActive.value = attrs?.class === style.class;
+                            } else {
+                                isActive.value = readVizuProp(props.editor, style.prop) === style.value;
+                            }
+                        });
                     }
 
                     onMounted(() => {

@@ -42,10 +42,20 @@ class AddonServiceProvider extends BaseAddonServiceProvider
         $swatches  = Fieldtypes\ThemeColorPicker::buildSwatches();
         $allStyles = config('statamic.vizuall_bard_styles.styles', []);
         $allGroups = config('statamic.vizuall_bard_styles.groups', []);
+
+        $sizeVars = [];
+        try {
+            $global    = \Statamic\Facades\GlobalSet::findByHandle('theme_settings');
+            $variables = $global?->in(config('app.locale', 'default'));
+            $data      = $variables?->data() ?? collect();
+            $sizeVars  = $data->get('fluid_sizes')['sizes_css'] ?? [];
+        } catch (\Throwable $e) {}
+
         Statamic::provideToScript([
             'bard-color-picker'   => ['swatches' => $swatches, 'allow_any' => true],
             'vizuall-bard-styles' => $allStyles,
             'vizuall-bard-groups' => $allGroups,
+            'vizuall-size-vars'   => $sizeVars,
         ]);
     }
 }
