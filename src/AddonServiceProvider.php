@@ -41,9 +41,11 @@ class AddonServiceProvider extends BaseAddonServiceProvider
         Statamic::booted(function () {
             $swatches  = Fieldtypes\ThemeColorPicker::buildSwatches();
             $allStyles = config('statamic.vizuall_bard_styles.styles', []);
+            $allGroups = config('statamic.vizuall_bard_styles.groups', []);
             Statamic::provideToScript([
                 'bard-color-picker'   => ['swatches' => $swatches, 'allow_any' => true],
                 'vizuall-bard-styles' => $allStyles,
+                'vizuall-bard-groups' => $allGroups,
             ]);
         });
     }

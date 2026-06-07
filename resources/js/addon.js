@@ -939,56 +939,7 @@
             document.head.appendChild(el);
         })();
 
-        // 0e. Toolbar-knapper for alle konfigurerede styles (span + paragraph)
-        (() => {
-            const bardStyles = Statamic.$config.get('vizuall-bard-styles') || [];
-            bardStyles.forEach(style => {
-                const isParagraph = style.type === 'paragraph';
-                Statamic.$bard.buttons(buttons => {
-                    buttons.push({ name: `vizu-${style.handle}`, text: style.name, component: `bard-btn-vizu-${style.handle}`, html: style.ident || '?' });
-                });
-                Statamic.$components.register(`bard-btn-vizu-${style.handle}`, {
-                    props: { editor: { type: Object, required: true } },
-                    setup(props) {
-                        const isActive = ref(false);
-                        function check() {
-                            if (isParagraph) {
-                                const attrs = props.editor.getAttributes('paragraph');
-                                isActive.value = attrs.vizuClass === style.class;
-                            } else {
-                                isActive.value = readVizuProp(props.editor, style.prop) === style.value;
-                            }
-                        }
-                        onMounted(() => {
-                            props.editor?.on('selectionUpdate', check);
-                            props.editor?.on('transaction', check);
-                        });
-                        onUnmounted(() => {
-                            props.editor?.off('selectionUpdate', check);
-                            props.editor?.off('transaction', check);
-                        });
-                        function toggle() {
-                            if (isParagraph) {
-                                const cur = props.editor.getAttributes('paragraph').vizuClass;
-                                props.editor.chain().focus()
-                                    .updateAttributes('paragraph', { vizuClass: cur === style.class ? null : style.class })
-                                    .run();
-                            } else if (isActive.value) {
-                                props.editor.chain().focus().extendMarkRange('vizuStyle').clearVizuProp(style.prop).run();
-                            } else {
-                                props.editor.chain().focus().extendMarkRange('vizuStyle').setVizuProp(style.prop, style.value).run();
-                            }
-                        }
-                        return () => h('button', {
-                            type: 'button',
-                            class: ['bard-toolbar-button', isActive.value && 'active'].filter(Boolean).join(' '),
-                            title: style.name,
-                            onClick: toggle,
-                        }, style.ident || '?');
-                    },
-                });
-            });
-        })();
+        // 0e. (vizu style-knapper registreres i separat booting-blok — se bunden af filen)
 
         // 1. TipTap mark — wraps text in <span style="color: #xxx"> (bevares for bagudkompatibilitet)
         Statamic.$bard.addExtension(({ tiptap }) => {
@@ -1271,4 +1222,227 @@
 
         setTimeout(tryOpen, 600);
     }());
+
+    // ── Vizuall Bard Style-knapper ────────────────────────────────────────────
+    // Styles uden 'group' → individuel knap i pickeren.
+    // Styles med samme 'group'-værdi → én dropdown-knap i pickeren.
+    Statamic.booting(() => {
+        const allStyles = Statamic.$config.get('vizuall-bard-styles') || [];
+        const allGroups = Statamic.$config.get('vizuall-bard-groups') || {};
+        if (!allStyles.length) return;
+
+        const { h, ref, onMounted, onUnmounted } = window.Vue;
+
+        // Sortér styles i grupper og individuelle
+        const groupedMap = {};   // groupName → [styles]
+        const ungrouped  = [];
+
+        allStyles.forEach(style => {
+            if (style.group) {
+                if (!groupedMap[style.group]) groupedMap[style.group] = [];
+                groupedMap[style.group].push(style);
+            } else {
+                ungrouped.push(style);
+            }
+        });
+
+        // Registrér alle knapper i ét kald — vigtig for at de vises i picker
+        Statamic.$bard.buttons(buttons => {
+            Object.entries(groupedMap).forEach(([groupName, groupStyles]) => {
+                const meta = allGroups[groupName] || {};
+                const slug = groupName.replace(/_/g, '-');
+                buttons.push({
+                    name:      `vizu-group-${slug}`,
+                    text:      meta.name || groupName,
+                    component: `bard-btn-vizu-group-${slug}`,
+                    html:      meta.ident || groupName[0].toUpperCase(),
+                });
+            });
+            ungrouped.forEach(style => {
+                const slug = style.handle.replace(/_/g, '-');
+                buttons.push({
+                    name:      `vizu-${slug}`,
+                    text:      style.name,
+                    component: `bard-btn-vizu-${slug}`,
+                    html:      style.ident || '?',
+                });
+            });
+        });
+
+        // ── Gruppe dropdown-komponenter ───────────────────────────────────────
+        Object.entries(groupedMap).forEach(([groupName, groupStyles]) => {
+            const groupMeta = allGroups[groupName] || {};
+            const slug      = groupName.replace(/_/g, '-');
+
+            Statamic.$components.register(`bard-btn-vizu-group-${slug}`, {
+                props: { editor: { type: Object, required: true }, bard: { type: Object, default: null } },
+                setup(props) {
+                    const container = ref(null);
+                    const isOpen    = ref(false);
+                    const portalEl  = { value: null };
+
+                    function getActive() {
+                        for (const s of groupStyles) {
+                            if (s.prop && readVizuProp(props.editor, s.prop) === s.value) return s;
+                        }
+                        return null;
+                    }
+
+                    function updatePos() {
+                        if (!container.value || !portalEl.value) return;
+                        const r  = container.value.getBoundingClientRect();
+                        const pw = portalEl.value.offsetWidth || 180;
+                        portalEl.value.style.left = Math.max(4, Math.min(r.left, window.innerWidth - pw - 4)) + 'px';
+                        portalEl.value.style.top  = (r.bottom + 4) + 'px';
+                    }
+
+                    function buildContent() {
+                        const div    = portalEl.value;
+                        div.innerHTML = '';
+                        const active = getActive();
+
+                        groupStyles.forEach(style => {
+                            const isCur = active?.handle === style.handle;
+
+                            const btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.style.cssText = `display:flex;align-items:center;gap:8px;width:100%;padding:5px 10px;border:none;cursor:pointer;text-align:left;background:${isCur ? 'rgba(59,130,246,.18)' : 'transparent'};border-radius:4px;color:${isCur ? '#93c5fd' : '#e2e8f0'};`;
+                            btn.addEventListener('mouseover', () => { if (!isCur) btn.style.background = 'rgba(255,255,255,.07)'; });
+                            btn.addEventListener('mouseout',  () => { if (!isCur) btn.style.background = 'transparent'; });
+                            btn.addEventListener('click', () => {
+                                if (isCur) {
+                                    props.editor.chain().focus().extendMarkRange('vizuStyle').clearVizuProp(style.prop).run();
+                                } else {
+                                    props.editor.chain().focus().extendMarkRange('vizuStyle').setVizuProp(style.prop, style.value).run();
+                                }
+                                closePortal();
+                            });
+
+                            const badge = document.createElement('span');
+                            badge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:18px;padding:0 3px;border-radius:3px;font-size:9px;font-weight:700;font-family:monospace;background:${isCur ? '#3b82f6' : 'rgba(255,255,255,.15)'};color:${isCur ? '#fff' : '#94a3b8'};flex-shrink:0;`;
+                            badge.textContent = style.ident;
+                            btn.appendChild(badge);
+
+                            const name = document.createElement('span');
+                            name.style.cssText = 'font-size:12px;flex:1;';
+                            name.textContent = style.name;
+                            btn.appendChild(name);
+
+                            if (isCur) {
+                                const chk = document.createElement('span');
+                                chk.textContent = '✓';
+                                chk.style.cssText = 'font-size:11px;color:#3b82f6;';
+                                btn.appendChild(chk);
+                            }
+
+                            div.appendChild(btn);
+                        });
+                    }
+
+                    function openPortal() {
+                        if (portalEl.value) return;
+                        const div = document.createElement('div');
+                        div.style.cssText = 'position:fixed;z-index:99999;background:#1a1f2e;border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:160px;';
+                        document.body.appendChild(div);
+                        portalEl.value = div;
+                        window.addEventListener('scroll', updatePos, true);
+                        requestAnimationFrame(() => { updatePos(); buildContent(); });
+                    }
+
+                    function closePortal() {
+                        if (!portalEl.value) return;
+                        document.body.removeChild(portalEl.value);
+                        portalEl.value = null;
+                        window.removeEventListener('scroll', updatePos, true);
+                        isOpen.value = false;
+                    }
+
+                    function toggle() { isOpen.value ? closePortal() : (isOpen.value = true, openPortal()); }
+
+                    function handleOutside(e) {
+                        if (!isOpen.value) return;
+                        if (container.value?.contains(e.target) || portalEl.value?.contains(e.target)) return;
+                        closePortal();
+                    }
+
+                    function onEditorUpdate() { if (portalEl.value) buildContent(); }
+
+                    onMounted(() => {
+                        document.addEventListener('mousedown', handleOutside);
+                        props.editor?.on('selectionUpdate', onEditorUpdate);
+                        props.editor?.on('transaction', onEditorUpdate);
+                    });
+                    onUnmounted(() => {
+                        document.removeEventListener('mousedown', handleOutside);
+                        props.editor?.off('selectionUpdate', onEditorUpdate);
+                        props.editor?.off('transaction', onEditorUpdate);
+                        closePortal();
+                    });
+
+                    return () => {
+                        const active = getActive();
+                        return h('div', { ref: container, style: 'display:inline-flex' }, [
+                            h('button', {
+                                type: 'button',
+                                class: ['bard-toolbar-button', (isOpen.value || active) && 'active'].filter(Boolean).join(' '),
+                                title: groupMeta.name || groupName,
+                                onClick: toggle,
+                            }, active ? active.ident : (groupMeta.ident || groupName[0].toUpperCase())),
+                        ]);
+                    };
+                },
+            });
+        });
+
+        // ── Individuelle knapper (ingen group) ────────────────────────────────
+        ungrouped.forEach(style => {
+            const isParagraph = style.type === 'paragraph';
+            const slug        = style.handle.replace(/_/g, '-');
+
+            Statamic.$components.register(`bard-btn-vizu-${slug}`, {
+                props: { editor: { type: Object, required: true } },
+                setup(props) {
+                    const isActive = ref(false);
+
+                    function check() {
+                        if (isParagraph) {
+                            isActive.value = props.editor.getAttributes('paragraph').vizuClass === style.class;
+                        } else {
+                            isActive.value = readVizuProp(props.editor, style.prop) === style.value;
+                        }
+                    }
+
+                    onMounted(() => {
+                        props.editor?.on('selectionUpdate', check);
+                        props.editor?.on('transaction', check);
+                    });
+                    onUnmounted(() => {
+                        props.editor?.off('selectionUpdate', check);
+                        props.editor?.off('transaction', check);
+                    });
+
+                    function toggle() {
+                        if (isParagraph) {
+                            const cur = props.editor.getAttributes('paragraph').vizuClass;
+                            props.editor.chain().focus()
+                                .updateAttributes('paragraph', { vizuClass: cur === style.class ? null : style.class })
+                                .run();
+                        } else if (isActive.value) {
+                            props.editor.chain().focus().extendMarkRange('vizuStyle').clearVizuProp(style.prop).run();
+                        } else {
+                            props.editor.chain().focus().extendMarkRange('vizuStyle').setVizuProp(style.prop, style.value).run();
+                        }
+                    }
+
+                    return () => h('button', {
+                        type: 'button',
+                        class: ['bard-toolbar-button', isActive.value && 'active'].filter(Boolean).join(' '),
+                        title: style.name,
+                        onClick: toggle,
+                    }, style.ident || '?');
+                },
+            });
+        });
+    });
+
 }());
