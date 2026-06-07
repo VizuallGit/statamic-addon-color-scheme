@@ -2,9 +2,7 @@
 
 namespace Vizuall\ColorScheme;
 
-use Statamic\Fieldtypes\Bard\Augmentor;
 use Statamic\Providers\AddonServiceProvider as BaseAddonServiceProvider;
-use Statamic\Statamic;
 use Statamic\Modifiers\Modifier;
 
 class AddonServiceProvider extends BaseAddonServiceProvider
@@ -32,30 +30,5 @@ class AddonServiceProvider extends BaseAddonServiceProvider
     public function bootAddon(): void
     {
         Modifier::register('contrast_color', Modifiers\ContrastColor::class);
-        Augmentor::addExtension('themeColor', new Marks\ThemeColor);
-        Augmentor::addExtension('vizuStyle', new Marks\VizuStyle);
-        // Erstatter bard-texstyle's btsSpan — renderer old indhold med inline styles
-        Augmentor::addExtension('btsSpan', new Marks\BtsSpan);
-        Augmentor::addExtension('vizuParagraphStyle', new Extensions\VizuParagraphStyle);
-        Augmentor::addExtension('vizuSpanClass', new Marks\VizuSpanClass);
-
-        $swatches  = Fieldtypes\ThemeColorPicker::buildSwatches();
-        $allStyles = config('statamic.vizuall_bard_styles.styles', []);
-        $allGroups = config('statamic.vizuall_bard_styles.groups', []);
-
-        $sizeVars = [];
-        try {
-            $global    = \Statamic\Facades\GlobalSet::findByHandle('theme_settings');
-            $variables = $global?->in(config('app.locale', 'default'));
-            $data      = $variables?->data() ?? collect();
-            $sizeVars  = $data->get('fluid_sizes')['sizes_css'] ?? [];
-        } catch (\Throwable $e) {}
-
-        Statamic::provideToScript([
-            'bard-color-picker'   => ['swatches' => $swatches, 'allow_any' => true],
-            'vizuall-bard-styles' => $allStyles,
-            'vizuall-bard-groups' => $allGroups,
-            'vizuall-size-vars'   => $sizeVars,
-        ]);
     }
 }
