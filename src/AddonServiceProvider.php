@@ -38,15 +38,13 @@ class AddonServiceProvider extends BaseAddonServiceProvider
         Augmentor::addExtension('btsSpan', new Marks\BtsSpan);
         Augmentor::addExtension('vizuParagraphStyle', new Extensions\VizuParagraphStyle);
 
-        Statamic::booted(function () {
-            $swatches  = Fieldtypes\ThemeColorPicker::buildSwatches();
-            $allStyles = config('statamic.vizuall_bard_styles.styles', []);
-            $allGroups = config('statamic.vizuall_bard_styles.groups', []);
-            Statamic::provideToScript([
-                'bard-color-picker'   => ['swatches' => $swatches, 'allow_any' => true],
-                'vizuall-bard-styles' => $allStyles,
-                'vizuall-bard-groups' => $allGroups,
-            ]);
-        });
+        $swatches  = Fieldtypes\ThemeColorPicker::buildSwatches();
+        $allStyles = config('statamic.vizuall_bard_styles.styles', []);
+        $allGroups = config('statamic.vizuall_bard_styles.groups', []);
+        Statamic::provideToScript([
+            'bard-color-picker'   => ['swatches' => $swatches, 'allow_any' => true],
+            'vizuall-bard-styles' => $allStyles,
+            'vizuall-bard-groups' => $allGroups,
+        ]);
     }
 }

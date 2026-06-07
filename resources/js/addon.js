@@ -1228,7 +1228,8 @@
     Statamic.booting(() => {
         const allStyles = Statamic.$config.get('vizuall-bard-styles') || [];
         const allGroups = Statamic.$config.get('vizuall-bard-groups') || {};
-        if (!allStyles.length) return;
+        console.log('[VizuBard] booting, styles:', allStyles.length, 'groups:', Object.keys(allGroups));
+        if (!allStyles.length) { console.warn('[VizuBard] ingen styles — afbryder'); return; }
 
         const { h, ref, onMounted, onUnmounted } = window.Vue;
 
@@ -1413,6 +1414,7 @@
         // Registrér knapper via makeButton factory.
         // splice(0,0,...) indsætter FORREST i arrayet så knapperne er synlige i første række.
         Statamic.$bard.buttons((buttons, makeButton) => {
+            console.log('[VizuBard] buttons callback kørt, buttons i array:', buttons.length, 'makeButton:', typeof makeButton);
             const toAdd = [];
 
             Object.entries(groupedMap).forEach(([groupName, groupStyles]) => {
@@ -1438,7 +1440,9 @@
 
             // Filtrer nulls (toolbar-kontekst: makeButton returnerer null hvis ikke konfigureret)
             const valid = toAdd.filter(Boolean);
+            console.log('[VizuBard] valid buttons at tilføje:', valid.map(b => b.name));
             if (valid.length) buttons.splice(0, 0, ...valid);
+            console.log('[VizuBard] efter splice, buttons[0].name:', buttons[0]?.name);
         });
     });
 
