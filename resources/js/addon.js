@@ -1224,8 +1224,7 @@
     }());
 
     // ── Vizuall Bard Style-knapper ────────────────────────────────────────────
-    // Styles uden 'group' → individuel knap i pickeren.
-    // Styles med samme 'group'-værdi → én dropdown-knap i pickeren.
+    // Bruger makeButton factory (2. parameter) — det er det som viser knapper i pickeren.
     Statamic.booting(() => {
         const allStyles = Statamic.$config.get('vizuall-bard-styles') || [];
         const allGroups = Statamic.$config.get('vizuall-bard-groups') || {};
@@ -1234,7 +1233,7 @@
         const { h, ref, onMounted, onUnmounted } = window.Vue;
 
         // Sortér styles i grupper og individuelle
-        const groupedMap = {};   // groupName → [styles]
+        const groupedMap = {};
         const ungrouped  = [];
 
         allStyles.forEach(style => {
@@ -1246,36 +1245,10 @@
             }
         });
 
-        // Registrér alle knapper i ét kald — vigtig for at de vises i picker
-        Statamic.$bard.buttons(buttons => {
-            Object.entries(groupedMap).forEach(([groupName, groupStyles]) => {
-                const meta = allGroups[groupName] || {};
-                const slug = groupName.replace(/_/g, '-');
-                buttons.push({
-                    name:      `vizu-group-${slug}`,
-                    text:      meta.name || groupName,
-                    component: `bard-btn-vizu-group-${slug}`,
-                    html:      meta.ident || groupName[0].toUpperCase(),
-                });
-            });
-            ungrouped.forEach(style => {
-                const slug = style.handle.replace(/_/g, '-');
-                buttons.push({
-                    name:      `vizu-${slug}`,
-                    text:      style.name,
-                    component: `bard-btn-vizu-${slug}`,
-                    html:      style.ident || '?',
-                });
-            });
-        });
-
-        // ── Gruppe dropdown-komponenter ───────────────────────────────────────
-        Object.entries(groupedMap).forEach(([groupName, groupStyles]) => {
-            const groupMeta = allGroups[groupName] || {};
-            const slug      = groupName.replace(/_/g, '-');
-
-            Statamic.$components.register(`bard-btn-vizu-group-${slug}`, {
-                props: { editor: { type: Object, required: true }, bard: { type: Object, default: null } },
+        // Byg Vue-komponent for gruppe-dropdown
+        function buildGroupComponent(groupName, groupStyles, groupMeta) {
+            return {
+                props: { editor: { type: Object, required: true }, button: { type: Object, default: null }, bard: { type: Object, default: null } },
                 setup(props) {
                     const container = ref(null);
                     const isOpen    = ref(false);
@@ -1297,13 +1270,12 @@
                     }
 
                     function buildContent() {
-                        const div    = portalEl.value;
+                        const div = portalEl.value;
                         div.innerHTML = '';
                         const active = getActive();
 
                         groupStyles.forEach(style => {
                             const isCur = active?.handle === style.handle;
-
                             const btn = document.createElement('button');
                             btn.type = 'button';
                             btn.style.cssText = `display:flex;align-items:center;gap:8px;width:100%;padding:5px 10px;border:none;cursor:pointer;text-align:left;background:${isCur ? 'rgba(59,130,246,.18)' : 'transparent'};border-radius:4px;color:${isCur ? '#93c5fd' : '#e2e8f0'};`;
@@ -1317,24 +1289,20 @@
                                 }
                                 closePortal();
                             });
-
                             const badge = document.createElement('span');
                             badge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:18px;padding:0 3px;border-radius:3px;font-size:9px;font-weight:700;font-family:monospace;background:${isCur ? '#3b82f6' : 'rgba(255,255,255,.15)'};color:${isCur ? '#fff' : '#94a3b8'};flex-shrink:0;`;
                             badge.textContent = style.ident;
                             btn.appendChild(badge);
-
-                            const name = document.createElement('span');
-                            name.style.cssText = 'font-size:12px;flex:1;';
-                            name.textContent = style.name;
-                            btn.appendChild(name);
-
+                            const label = document.createElement('span');
+                            label.style.cssText = 'font-size:12px;flex:1;';
+                            label.textContent = style.name;
+                            btn.appendChild(label);
                             if (isCur) {
                                 const chk = document.createElement('span');
                                 chk.textContent = '✓';
                                 chk.style.cssText = 'font-size:11px;color:#3b82f6;';
                                 btn.appendChild(chk);
                             }
-
                             div.appendChild(btn);
                         });
                     }
@@ -1391,16 +1359,14 @@
                         ]);
                     };
                 },
-            });
-        });
+            };
+        }
 
-        // ── Individuelle knapper (ingen group) ────────────────────────────────
-        ungrouped.forEach(style => {
+        // Byg Vue-komponent for individuel knap
+        function buildIndividualComponent(style) {
             const isParagraph = style.type === 'paragraph';
-            const slug        = style.handle.replace(/_/g, '-');
-
-            Statamic.$components.register(`bard-btn-vizu-${slug}`, {
-                props: { editor: { type: Object, required: true } },
+            return {
+                props: { editor: { type: Object, required: true }, button: { type: Object, default: null } },
                 setup(props) {
                     const isActive = ref(false);
 
@@ -1441,6 +1407,30 @@
                         onClick: toggle,
                     }, style.ident || '?');
                 },
+            };
+        }
+
+        // Registrér knapper via makeButton factory — nødvendigt for at vises i picker
+        Statamic.$bard.buttons((buttons, makeButton) => {
+            Object.entries(groupedMap).forEach(([groupName, groupStyles]) => {
+                const meta      = allGroups[groupName] || {};
+                const slug      = groupName.replace(/_/g, '-');
+                buttons.push(makeButton({
+                    name:      `vizu-group-${slug}`,
+                    text:      meta.name || groupName,
+                    html:      meta.ident || groupName[0].toUpperCase(),
+                    component: buildGroupComponent(groupName, groupStyles, meta),
+                }));
+            });
+
+            ungrouped.forEach(style => {
+                const slug = style.handle.replace(/_/g, '-');
+                buttons.push(makeButton({
+                    name:      `vizu-${slug}`,
+                    text:      style.name,
+                    html:      style.ident || '?',
+                    component: buildIndividualComponent(style),
+                }));
             });
         });
     });
