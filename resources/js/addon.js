@@ -899,32 +899,27 @@
             });
         });
 
-        // 0c. Paragraph-style Tiptap-extension (vizuClass-attribut på <p>/<h1>)
+        // 0c. vizuSpanClass — eget mark for class-baserede paragraph-styles
         Statamic.$bard.addExtension(({ tiptap }) => {
             const paragraphStyles = (Statamic.$config.get('vizuall-bard-styles') || [])
                 .filter(s => s.type === 'paragraph' && s.class);
-            if (!paragraphStyles.length) return tiptap.core.Extension.create({ name: 'vizuParaNoop' });
-
+            if (!paragraphStyles.length) return tiptap.core.Extension.create({ name: 'vizuSpanClassNoop' });
             const knownClasses = new Set(paragraphStyles.map(s => s.class));
-            return tiptap.core.Extension.create({
-                name: 'vizuParagraphStyle',
-                addGlobalAttributes() {
-                    return [{
-                        types: ['paragraph', 'heading'],
-                        attributes: {
-                            vizuClass: {
-                                default: null,
-                                parseHTML: el => {
-                                    for (const cls of knownClasses) {
-                                        if (el.classList.contains(cls)) return cls;
-                                    }
-                                    return null;
-                                },
-                                renderHTML: attrs => attrs.vizuClass ? { class: attrs.vizuClass } : {},
-                            },
+            return tiptap.core.Mark.create({
+                name: 'vizuSpanClass',
+                addAttributes() {
+                    return {
+                        class: {
+                            default: null,
+                            parseHTML: el => el.getAttribute('data-vsc') || null,
+                            renderHTML: attrs => attrs.class
+                                ? { 'data-vsc': attrs.class, class: attrs.class }
+                                : {},
                         },
-                    }];
+                    };
                 },
+                parseHTML() { return [{ tag: 'span[data-vsc]' }]; },
+                renderHTML({ HTMLAttributes }) { return ['span', HTMLAttributes, 0]; },
             });
         });
 
@@ -939,7 +934,14 @@
             document.head.appendChild(el);
         })();
 
-        // 0e. (vizu style-knapper registreres i separat booting-blok — se bunden af filen)
+        // 0e. CSS: picker active-state synlig for knapper uden bard-toolbar-button klasse
+        (() => {
+            const el = document.createElement('style');
+            el.textContent = `.bard-fixed-toolbar.bard-toolbar-setting button.active{background-color:var(--theme-color-gray-600)!important;color:var(--color-white)!important;}`;
+            document.head.appendChild(el);
+        })();
+
+        // 0f. (vizu style-knapper registreres i separat booting-blok — se bunden af filen)
 
         // 1. TipTap mark — wraps text in <span style="color: #xxx"> (bevares for bagudkompatibilitet)
         Statamic.$bard.addExtension(({ tiptap }) => {
@@ -1228,7 +1230,7 @@
     Statamic.booting(() => {
         const allStyles = Statamic.$config.get('vizuall-bard-styles') || [];
         const allGroups = Statamic.$config.get('vizuall-bard-groups') || {};
-        console.log('[VizuBard] booting, styles:', allStyles.length, 'groups:', Object.keys(allGroups));
+        console.log('[VizuBard] v3 booting, styles:', allStyles.length, 'groups:', Object.keys(allGroups));
         if (!allStyles.length) { console.warn('[VizuBard] ingen styles — afbryder'); return; }
 
         const { h, ref, onMounted, onUnmounted } = window.Vue;
@@ -1373,7 +1375,8 @@
 
                     function check() {
                         if (isParagraph) {
-                            isActive.value = props.editor.getAttributes('paragraph').vizuClass === style.class;
+                            const attrs = props.editor.getAttributes('vizuSpanClass');
+                            isActive.value = attrs?.class === style.class;
                         } else {
                             isActive.value = readVizuProp(props.editor, style.prop) === style.value;
                         }
@@ -1390,10 +1393,11 @@
 
                     function toggle() {
                         if (isParagraph) {
-                            const cur = props.editor.getAttributes('paragraph').vizuClass;
-                            props.editor.chain().focus()
-                                .updateAttributes('paragraph', { vizuClass: cur === style.class ? null : style.class })
-                                .run();
+                            if (isActive.value) {
+                                props.editor.chain().focus().extendMarkRange('vizuSpanClass').unsetMark('vizuSpanClass').run();
+                            } else {
+                                props.editor.chain().focus().setMark('vizuSpanClass', { class: style.class }).run();
+                            }
                         } else if (isActive.value) {
                             props.editor.chain().focus().extendMarkRange('vizuStyle').clearVizuProp(style.prop).run();
                         } else {

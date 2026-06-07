@@ -37,6 +37,7 @@ class AddonServiceProvider extends BaseAddonServiceProvider
         // Erstatter bard-texstyle's btsSpan — renderer old indhold med inline styles
         Augmentor::addExtension('btsSpan', new Marks\BtsSpan);
         Augmentor::addExtension('vizuParagraphStyle', new Extensions\VizuParagraphStyle);
+        Augmentor::addExtension('vizuSpanClass', new Marks\VizuSpanClass);
 
         $swatches  = Fieldtypes\ThemeColorPicker::buildSwatches();
         $allStyles = config('statamic.vizuall_bard_styles.styles', []);

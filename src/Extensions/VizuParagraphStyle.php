@@ -35,7 +35,7 @@ class VizuParagraphStyle extends Extension
                     },
                     'renderHTML'  => function ($attributes) {
                         $cls = $attributes->vizuClass ?? null;
-                        return $cls ? ['class' => $cls] : null;
+                        return $cls ? ['class' => $cls] : [];
                     },
                 ],
             ],
