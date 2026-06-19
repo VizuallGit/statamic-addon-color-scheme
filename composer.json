@@ -1,6 +1,6 @@
 {
     "name": "statamic-addon/color-scheme",
-    "description": "Vizuall Color Scheme fieldtypes and color utilities",
+    "description": "Color Scheme fieldtypes and color utilities",
     "type": "statamic-addon",
     "license": "proprietary",
     "require": {
@@ -14,7 +14,7 @@
     },
     "extra": {
         "statamic": {
-            "name": "Vizuall Color Scheme",
+            "name": "Color Scheme",
             "provider": "Vizuall\\ColorScheme\\AddonServiceProvider"
         },
         "laravel": {
