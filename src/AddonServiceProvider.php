@@ -39,6 +39,19 @@ class AddonServiceProvider extends BaseAddonServiceProvider
         ], 'color-scheme');
         \Statamic\Statamic::script('color-scheme', 'addon.js?v='.md5_file($script));
 
+        // Front-end-halvdelen af kontrasten. En custom property kan ikke slås op
+        // på serveren — værdien findes først når kaskaden er kørt — så
+        // ContrastColor falder tilbage på lys tekst, og den her måler den
+        // rigtige farve i browseren. Uden den er kontrasten et gæt.
+        //
+        // Udgives frem for at injiceres: det er sitets JS, ikke CP'ets, og
+        // hvert site vælger selv om den skal bundles eller hentes som en fil.
+        // Importér den i din site.js:
+        //     import '../../public/vendor/color-scheme/js/auto-contrast.js';
+        $this->publishes([
+            __DIR__.'/../resources/js/auto-contrast.js' => public_path('vendor/color-scheme/js/auto-contrast.js'),
+        ], 'color-scheme');
+
         Modifier::register('contrast_color', Modifiers\ContrastColor::class);
         Modifier::register('theme_color', Modifiers\ThemeColor::class);
         Modifier::register('highlight_color', Modifiers\HighlightColor::class);
