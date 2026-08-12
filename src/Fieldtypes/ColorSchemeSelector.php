@@ -51,6 +51,22 @@ class ColorSchemeSelector extends Fieldtype
         $scheme = collect($this->getAllSchemes())->firstWhere('handle', $value);
         if (!$scheme) return null;
 
+        foreach ([
+            'background_color',
+            'text_color',
+            'inner_background_color',
+            'inner_text_color',
+            'button_one_color',
+            'button_one_hover_color',
+            'button_two_color',
+            'button_two_hover_color',
+            'highlighted_color',
+        ] as $colorKey) {
+            if (! empty($scheme[$colorKey])) {
+                $scheme[$colorKey] = ThemeColorPicker::resolveStoredColor($scheme[$colorKey]);
+            }
+        }
+
         ['light' => $light, 'dark' => $dark] = $this->getContrastColors();
         $scheme['button_one_text_color'] = ContrastColor::pick($scheme['button_one_color'] ?? '#333333', $light, $dark);
         $scheme['button_two_text_color'] = ContrastColor::pick($scheme['button_two_color'] ?? '#999999', $light, $dark);

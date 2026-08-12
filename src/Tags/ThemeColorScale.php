@@ -17,7 +17,10 @@ class ThemeColorScale extends Tags
             $global = GlobalSet::findByHandle('theme_settings');
             if (! $global) return '';
 
-            $vars = $global->in(Site::default()->handle());
+            // Brug current site — OverrideGlobalsInPreview skriver på den samme
+            // Variables-instans under Live Preview (sve_globals=1).
+            $vars = $global->in(Site::current()->handle())
+                ?? $global->in(Site::default()->handle());
             if (! $vars) return '';
 
             $lines = [];
@@ -29,7 +32,10 @@ class ThemeColorScale extends Tags
                 $scale = ThemeColorPicker::scale($hex, $bias, $sat);
                 $name  = $palette['name'];
 
+                // --primary = brand-hex fra Theme Settings (matcher farvefeltet).
+                // Skala-trin 50–950 er afledte toner; --primary-brand er samme brand.
                 $lines[] = "--{$name}: {$hex};";
+                $lines[] = "--{$name}-brand: {$hex};";
                 foreach (ThemeColorPicker::STEP_NAMES as $i => $step) {
                     $lines[] = "--{$name}-{$step}: {$scale[$i]};";
                 }

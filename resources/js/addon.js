@@ -77,6 +77,192 @@
             return GRAY_STEPS;
         }
 
+        // Theme-swatches gemmes som CSS-var (var(--primary-900)), ikke som hex-snapshot.
+        // Så følger sektioner theme, når primary ændres — også på tværs af publish-forms.
+        const STEP_NAMES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+
+        const PALETTE_KEYS = [
+            { key: 'primary_color',    name: 'primary',    biasKey: 'primary_tones_bias',    satKey: 'primary_saturation' },
+            { key: 'secondary_color',  name: 'secondary',  biasKey: 'secondary_tones_bias',  satKey: 'secondary_saturation' },
+            { key: 'tertiary_color',   name: 'tertiary',   biasKey: 'tertiary_tones_bias',   satKey: 'tertiary_saturation' },
+            { key: 'quaternary_color', name: 'quaternary', biasKey: 'quaternary_tones_bias', satKey: 'quaternary_saturation' },
+        ];
+
+        function isThemeSettingsValues(vals) {
+            return PALETTE_KEYS.some(({ key }) => !!vals?.[key]);
+        }
+
+        /** Byg :root --primary-50…950 ud fra live Theme Settings-værdier. */
+        function buildThemeScaleCss(vals) {
+            if (!vals || typeof vals !== 'object') return '';
+            const lines = [];
+            for (const { key, name, biasKey, satKey } of PALETTE_KEYS) {
+                const hex = vals[key];
+                if (!hex || !/^#[0-9a-fA-F]{3,8}$/.test(String(hex))) continue;
+                const bias = Number(vals[biasKey] ?? 0);
+                const sat = Number(vals[satKey] ?? 0);
+                const scale = hexScale(hex, Number.isFinite(bias) ? bias : 0, Number.isFinite(sat) ? sat : 0);
+                lines.push(`--${name}:${hex}`);
+                lines.push(`--${name}-brand:${hex}`);
+                scale.forEach((h, i) => lines.push(`--${name}-${STEP_NAMES[i]}:${h}`));
+            }
+            return lines.join(';');
+        }
+
+        /**
+         * Live Preview :root + sektionens Theme Color Picker-swatches.
+         * --primary (brand) er fast hex; --primary-50…950 følger lys/sat.
+         *
+         * Palette i andre forms (hero osv.) lytter på `sve-theme-colors` —
+         * den skal fires på top-vinduet, fordi Theme Settings ligger i iframe.
+         */
+        let lastLiveThemeCss = '';
+        let lastThemeBroadcast = '';
+
+        function broadcastLiveThemeVals(vals) {
+            if (!vals || !isThemeSettingsValues(vals)) return;
+
+            // Kun palette-relevante felter — undgå støj fra resten af formen.
+            const slim = {};
+            for (const { key, biasKey, satKey } of PALETTE_KEYS) {
+                if (vals[key] != null) slim[key] = vals[key];
+                if (vals[biasKey] != null) slim[biasKey] = vals[biasKey];
+                if (vals[satKey] != null) slim[satKey] = vals[satKey];
+            }
+            const key = JSON.stringify(slim);
+            if (key === lastThemeBroadcast) return;
+            lastThemeBroadcast = key;
+
+            const targets = new Set([window]);
+            try {
+                if (window.parent) targets.add(window.parent);
+            } catch { /* ignore */ }
+            try {
+                if (window.top) targets.add(window.top);
+            } catch { /* ignore */ }
+
+            targets.forEach((w) => {
+                try {
+                    w.dispatchEvent(new CustomEvent('sve-theme-colors', { detail: slim }));
+                } catch { /* ignore */ }
+            });
+
+            // VE / andre iframes der stadig lytter via postMessage.
+            try {
+                const payload = {
+                    source: 'statamic-visual-editor',
+                    type: 'sve-theme-scale-values',
+                    values: slim,
+                };
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage(payload, '*');
+                } else {
+                    window.postMessage(payload, '*');
+                }
+            } catch { /* ignore */ }
+        }
+
+        function pushLiveThemeScaleToPreview(vals) {
+            if (!vals) return;
+
+            // Sektion-paletten skal følge lys/sat — også når CSS allerede er skrevet.
+            broadcastLiveThemeVals(vals);
+
+            const css = buildThemeScaleCss(vals);
+            if (!css || css === lastLiveThemeCss) return;
+            lastLiveThemeCss = css;
+
+            let frame = null;
+            try {
+                frame = window.top?.document?.getElementById('live-preview-iframe');
+            } catch { /* cross-origin top */ }
+            if (!frame) {
+                try {
+                    frame = document.getElementById('live-preview-iframe');
+                } catch { /* ignore */ }
+            }
+            if (!frame) return;
+
+            try {
+                const idoc = frame.contentDocument;
+                if (!idoc?.head) return;
+
+                let el = idoc.getElementById('__sve-theme-scale');
+                if (!el) {
+                    el = idoc.createElement('style');
+                    el.id = '__sve-theme-scale';
+                }
+                el.textContent = `:root{${css}}`;
+                idoc.head.appendChild(el);
+
+                // preview.js husker CSS’en, så morph ikke lader server-:root vinde.
+                idoc.defaultView?.postMessage(
+                    { source: 'statamic-visual-editor', type: 'sve-theme-scale', css },
+                    '*'
+                );
+            } catch { /* cross-origin preview */ }
+        }
+
+        function toCssVar(name) {
+            if (!name) return null;
+            return name.startsWith('var(') ? name : `var(${name})`;
+        }
+
+        function entriesFromVals(vals, meta = {}) {
+            const entries = [];
+            for (const { key, name, biasKey, satKey } of PALETTE_KEYS) {
+                if (!vals[key]) continue;
+                const bias = vals[biasKey] ?? meta.biases?.[key] ?? 0;
+                const sat  = vals[satKey]  ?? meta.saturations?.[key] ?? 0;
+                const scale = hexScale(vals[key], bias, sat);
+                // --primary = brand-hex (matcher Theme Settings-feltet).
+                // Trin 50–950 er afledte toner (lys-/mørkere + bias/sat).
+                entries.push({ hex: vals[key], cssVar: `var(--${name})` });
+                scale.forEach((h, i) => {
+                    entries.push({ hex: h, cssVar: `var(--${name}-${STEP_NAMES[i]})` });
+                });
+            }
+            STEP_NAMES.forEach((step, i) => {
+                entries.push({ hex: GRAY_STEPS[i], cssVar: `var(--gray-${step})` });
+            });
+            return entries;
+        }
+
+        function entriesFromMeta(meta) {
+            if (meta.swatchesWithVars?.length) {
+                return meta.swatchesWithVars.map(s => ({
+                    hex: s.hex,
+                    cssVar: toCssVar(s.var),
+                }));
+            }
+            return (meta.swatches || []).map(hex => ({ hex, cssVar: null }));
+        }
+
+        function indexOfStored(val, entries) {
+            if (!val) return -1;
+            const s = String(val);
+            if (s.startsWith('var(')) {
+                return entries.findIndex(e => e.cssVar === s);
+            }
+            return entries.findIndex(e => e.hex === s);
+        }
+
+        function cpBase() {
+            return window.Statamic?.$config?.get?.('cpUrl')
+                || `/${window.Statamic?.$config?.get?.('cpRoute') || 'cp'}`;
+        }
+
+        async function fetchSwatchEntries() {
+            const res = await fetch(`${cpBase()}/color-scheme/swatches`, {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (!Array.isArray(data)) return null;
+            return data.map(s => ({ hex: s.hex, cssVar: toCssVar(s.var) }));
+        }
+
         Statamic.$components.register('theme-color-picker-fieldtype', {
             inheritAttrs: false,
             props: {
@@ -87,51 +273,94 @@
             emits: ['update:value', 'update:meta', 'focus', 'blur'],
             setup(props, { emit, attrs }) {
                 const publishContext = inject('PublishContainerContext', null);
+                const liveThemeVals = ref(null);
+                const remoteEntries = ref(null);
 
-                const colorData = [
-                    { key: 'primary_color',    biasKey: 'primary_tones_bias',    satKey: 'primary_saturation' },
-                    { key: 'secondary_color',  biasKey: 'secondary_tones_bias',  satKey: 'secondary_saturation' },
-                    { key: 'tertiary_color',   biasKey: 'tertiary_tones_bias',   satKey: 'tertiary_saturation' },
-                    { key: 'quaternary_color', biasKey: 'quaternary_tones_bias', satKey: 'quaternary_saturation' },
-                ];
+                const inThemeSettings = computed(() => {
+                    if (!publishContext) return false;
+                    return isThemeSettingsValues(getPublishValues(publishContext));
+                });
 
-                const liveSwatches = computed(() => {
-                    if (publishContext) {
-                        const vals = getPublishValues(publishContext);
-                        const palette = [];
-                        for (const { key, biasKey, satKey } of colorData) {
-                            if (!vals[key]) continue;
-                            const bias = vals[biasKey] ?? props.meta.biases?.[key]      ?? 0;
-                            const sat  = vals[satKey]  ?? props.meta.saturations?.[key] ?? 0;
-                            palette.push(vals[key]);
-                            palette.push(...hexScale(vals[key], bias, sat));
-                        }
-                        if (!palette.length) return props.meta.swatches || [];
-                        palette.push(...neutralScale());
-                        return palette;
+                const swatchEntries = computed(() => {
+                    if (inThemeSettings.value) {
+                        return entriesFromVals(getPublishValues(publishContext), props.meta);
                     }
-                    return props.meta.swatches || [];
+                    if (liveThemeVals.value && isThemeSettingsValues(liveThemeVals.value)) {
+                        return entriesFromVals(liveThemeVals.value, props.meta);
+                    }
+                    if (remoteEntries.value?.length) {
+                        return remoteEntries.value;
+                    }
+                    return entriesFromMeta(props.meta);
+                });
+
+                const liveSwatches = computed(() => swatchEntries.value.map(e => e.hex));
+
+                // Color-fieldtype forstår kun hex — resolvér var(--…) til aktuel hex til UI.
+                const displayValue = computed(() => {
+                    const val = props.value;
+                    if (!val || !String(val).startsWith('var(')) return val;
+                    return swatchEntries.value.find(e => e.cssVar === val)?.hex ?? val;
                 });
 
                 const stepIndex = ref(-1);
 
+                async function refreshRemoteSwatches() {
+                    if (inThemeSettings.value) return;
+                    try {
+                        const entries = await fetchSwatchEntries();
+                        if (entries?.length) remoteEntries.value = entries;
+                    } catch {
+                        /* behold seneste palette */
+                    }
+                }
+
+                onMounted(() => {
+                    refreshRemoteSwatches();
+                    const onTheme = (e) => {
+                        if (e?.detail && isThemeSettingsValues(e.detail)) {
+                            liveThemeVals.value = e.detail;
+                        }
+                    };
+                    window.addEventListener('sve-theme-colors', onTheme);
+                    onUnmounted(() => window.removeEventListener('sve-theme-colors', onTheme));
+                });
+
+                // Kun opdatér index når værdien findes i paletten — ellers bevar
+                // forrige trin, så lysniveau/saturation stadig kan følge med.
                 watch(() => props.value, (val) => {
                     if (!val) { stepIndex.value = -1; return; }
-                    const idx = liveSwatches.value.indexOf(val);
+                    const idx = indexOfStored(val, swatchEntries.value);
                     if (idx !== -1) stepIndex.value = idx;
                 }, { immediate: true });
 
+                // Opgradér gamle hex-snapshots til CSS-var, når de matcher en swatch.
+                watch(swatchEntries, (entries) => {
+                    const val = props.value;
+                    if (!val || String(val).startsWith('var(')) return;
+                    const idx = entries.findIndex(e => e.hex === val && e.cssVar);
+                    if (idx !== -1) {
+                        stepIndex.value = idx;
+                        emit('update:value', entries[idx].cssVar);
+                    }
+                }, { immediate: true });
+
                 const onSelectValue = (val) => {
-                    stepIndex.value = liveSwatches.value.indexOf(val);
-                    emit('update:value', val);
+                    const entries = swatchEntries.value;
+                    const idx = entries.findIndex(e => e.hex === val);
+                    stepIndex.value = idx;
+                    emit('update:value', (idx !== -1 && entries[idx].cssVar) ? entries[idx].cssVar : val);
                 };
 
-                watch(liveSwatches, (newSwatches, oldSwatches) => {
-                    if (!oldSwatches?.length) return;
-                    if (stepIndex.value === -1 || !newSwatches.length) return;
-                    const newColor = newSwatches[stepIndex.value];
-                    if (newColor && newColor !== props.value) {
-                        emit('update:value', newColor);
+                // Når bias/sat/primary ændres, følg samme trin-index (behold CSS-var-token).
+                watch(swatchEntries, (newEntries, oldEntries) => {
+                    if (!oldEntries?.length) return;
+                    if (stepIndex.value === -1 || !newEntries.length) return;
+                    const next = newEntries[stepIndex.value];
+                    if (!next) return;
+                    const stored = next.cssVar || next.hex;
+                    if (stored && stored !== props.value) {
+                        emit('update:value', stored);
                     }
                 });
 
@@ -139,12 +368,15 @@
                     const ColorFieldtype = resolveComponent('color-fieldtype');
                     return h(ColorFieldtype, {
                         ...attrs,
-                        value:  props.value,
+                        value:  displayValue.value,
                         meta:   props.meta,
                         config: { ...props.config, swatches: liveSwatches.value, allow_any: true },
                         'onUpdate:value': onSelectValue,
                         'onUpdate:meta':  (val) => emit('update:meta', val),
-                        onFocus: () => emit('focus'),
+                        onFocus: () => {
+                            refreshRemoteSwatches();
+                            emit('focus');
+                        },
                         onBlur:  () => emit('blur'),
                     });
                 };
@@ -171,6 +403,11 @@
                 });
 
                 return () => {
+                    // Samme tick som Scale Preview: opdater Live Preview :root.
+                    if (publishContext) {
+                        pushLiveThemeScaleToPreview(getPublishValues(publishContext));
+                    }
+
                     if (!scale.value.length) return null;
                     return h('div', { style: 'display:flex;gap:5px;padding:10px 0 6px;' },
                         scale.value.map(({ step, color }) =>

@@ -27,12 +27,91 @@ class ThemeColorPicker extends Fieldtype
         return 'theme-color-picker';
     }
 
+    /**
+     * Behold CSS-custom-properties i output (var(--primary-950)).
+     * Live Preview/fremside opdaterer via :root (--primary-* fra theme_color_scale
+     * + live injektion når lysniveau/saturation ændres).
+     */
+    public function augment($value): mixed
+    {
+        return $value;
+    }
+
+    public static function clearSwatchCache(): void
+    {
+        static::$cachedSwatches = null;
+    }
+
+    public static function resolveStoredColor(mixed $value): mixed
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        $value = trim($value);
+
+        if (! preg_match('/^var\(\s*(--[a-z0-9-]+)\s*\)$/i', $value, $m)) {
+            return $value;
+        }
+
+        return static::resolveCssVar($m[1]) ?? $value;
+    }
+
+    /** Resolvér --primary-950 / --gray-100 til hex ud fra nuværende theme_settings. */
+    public static function resolveCssVar(string $varName): ?string
+    {
+        $name = ltrim($varName, '-');
+
+        if (preg_match('/^gray-(\d+)$/', $name, $m)) {
+            $idx = array_search((int) $m[1], self::STEP_NAMES, true);
+
+            return $idx !== false ? (self::GRAY_STEPS[$idx] ?? null) : null;
+        }
+
+        try {
+            $variables = static::loadVariables();
+            if (! $variables) {
+                return null;
+            }
+
+            foreach (static::discoverPalettes($variables) as $palette) {
+                $pname = $palette['name'];
+                $hex   = (string) $variables->get($palette['color']);
+                $bias  = (int) ($variables->get($palette['bias']) ?? 0);
+                $sat   = (int) ($variables->get($palette['sat']) ?? 0);
+                $scale = static::scale($hex, $bias, $sat);
+
+                // --primary = brand-hex (samme som Theme Settings-feltet).
+                if ($name === $pname) {
+                    return $hex;
+                }
+
+                if ($name === $pname.'-brand') {
+                    return $hex;
+                }
+
+                if (! preg_match('/^'.preg_quote($pname, '/').'-(\d+)$/', $name, $m)) {
+                    continue;
+                }
+
+                $idx = array_search((int) $m[1], self::STEP_NAMES, true);
+
+                return $idx === false ? null : ($scale[$idx] ?? null);
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return null;
+    }
+
     public function preload(): array
     {
         return [
-            'swatches'    => static::buildSwatches(),
-            'biases'      => static::buildBiases(),
-            'saturations' => static::buildSaturations(),
+            'swatches'         => static::buildSwatches(),
+            'swatchesWithVars' => static::buildSwatchesWithVars(),
+            'biases'           => static::buildBiases(),
+            'saturations'      => static::buildSaturations(),
         ];
     }
 
@@ -97,18 +176,27 @@ class ThemeColorPicker extends Fieldtype
     // Tilføjer man fx test_color i blueprintet, dukker --test-50..--test-950 automatisk op.
     public static function discoverPalettes($variables): array
     {
+        return static::discoverPalettesFrom($variables->data()->all());
+    }
+
+    public static function discoverPalettesFrom(array $data): array
+    {
         $palettes = [];
 
-        foreach ($variables->data()->all() as $key => $value) {
-            if (! str_ends_with($key, '_color')) continue;
-            if (! $value || ! preg_match('/^#[0-9a-fA-F]{3,8}$/', (string) $value)) continue;
+        foreach ($data as $key => $value) {
+            if (! is_string($key) || ! str_ends_with($key, '_color')) {
+                continue;
+            }
+            if (! $value || ! preg_match('/^#[0-9a-fA-F]{3,8}$/', (string) $value)) {
+                continue;
+            }
 
             $name       = substr($key, 0, -strlen('_color'));
             $palettes[] = [
                 'name'  => $name,
                 'color' => $key,
-                'bias'  => $name . '_tones_bias',
-                'sat'   => $name . '_saturation',
+                'bias'  => $name.'_tones_bias',
+                'sat'   => $name.'_saturation',
             ];
         }
 
@@ -120,7 +208,8 @@ class ThemeColorPicker extends Fieldtype
         $global = GlobalSet::findByHandle('theme_settings');
         if (! $global) return null;
 
-        $vars = $global->in(Site::default()->handle());
+        $vars = $global->in(Site::current()->handle())
+            ?? $global->in(Site::default()->handle());
         if ($vars) return $vars;
 
         // Fallback: prøv alle sites
@@ -132,39 +221,51 @@ class ThemeColorPicker extends Fieldtype
         return null;
     }
 
-    // Returnerer [{hex, var}] — var er CSS-custom-property-navn (fx --primary-500)
-    // eller null for neutraler (ingen CSS-variabel tilknyttet).
+    // Returnerer [{hex, var}] — var er CSS-custom-property-navn (fx --primary-500).
     public static function buildSwatchesWithVars(): array
     {
         try {
             $variables = static::loadVariables();
-            if (! $variables) return [];
-
-            $result = [];
-
-            foreach (static::discoverPalettes($variables) as $palette) {
-                $hex  = (string) $variables->get($palette['color']);
-                $bias = (int) ($variables->get($palette['bias']) ?? 0);
-                $sat  = (int) ($variables->get($palette['sat'])  ?? 0);
-                $name = $palette['name'];
-
-                $result[] = ['hex' => $hex, 'var' => "--{$name}"];
-
-                foreach (static::scale($hex, $bias, $sat) as $i => $scaleHex) {
-                    $step     = self::STEP_NAMES[$i] ?? ($i * 100);
-                    $result[] = ['hex' => $scaleHex, 'var' => "--{$name}-{$step}"];
-                }
+            if (! $variables) {
+                return [];
             }
 
-            // Neutraler — ingen CSS-variabel
-            foreach (self::GRAY_STEPS as $hex) {
-                $result[] = ['hex' => $hex, 'var' => null];
-            }
-
-            return $result;
+            return static::buildSwatchesWithVarsFrom($variables->data()->all());
         } catch (\Throwable) {
             return [];
         }
+    }
+
+    /** Byg swatches fra et flat theme_settings-array (saved eller Live Preview-stash). */
+    public static function buildSwatchesWithVarsFrom(array $data): array
+    {
+        $result = [];
+
+        foreach (static::discoverPalettesFrom($data) as $palette) {
+            $hex  = (string) ($data[$palette['color']] ?? '');
+            if ($hex === '') {
+                continue;
+            }
+            $bias = (int) ($data[$palette['bias']] ?? 0);
+            $sat  = (int) ($data[$palette['sat']] ?? 0);
+            $name = $palette['name'];
+            $scale = static::scale($hex, $bias, $sat);
+
+            // --primary = brand-hex (matcher Theme Settings). Trin 50–950 er afledte.
+            $result[] = ['hex' => $hex, 'var' => "--{$name}"];
+
+            foreach ($scale as $i => $scaleHex) {
+                $step     = self::STEP_NAMES[$i] ?? ($i * 100);
+                $result[] = ['hex' => $scaleHex, 'var' => "--{$name}-{$step}"];
+            }
+        }
+
+        foreach (self::GRAY_STEPS as $i => $hex) {
+            $step     = self::STEP_NAMES[$i] ?? ($i * 100);
+            $result[] = ['hex' => $hex, 'var' => "--gray-{$step}"];
+        }
+
+        return $result;
     }
 
     public static function buildSwatches(): array
