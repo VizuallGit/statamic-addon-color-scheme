@@ -252,15 +252,37 @@
                 || `/${window.Statamic?.$config?.get?.('cpRoute') || 'cp'}`;
         }
 
-        async function fetchSwatchEntries() {
-            const res = await fetch(`${cpBase()}/color-scheme/swatches`, {
+        let swatchEntriesPromise = null;
+
+        function fetchSwatchEntries() {
+            if (swatchEntriesPromise) {
+                return swatchEntriesPromise;
+            }
+
+            swatchEntriesPromise = fetch(`${cpBase()}/color-scheme/swatches`, {
                 credentials: 'same-origin',
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            });
-            if (!res.ok) return null;
-            const data = await res.json();
-            if (!Array.isArray(data)) return null;
-            return data.map(s => ({ hex: s.hex, cssVar: toCssVar(s.var) }));
+            })
+                .then(async (res) => {
+                    if (!res.ok) {
+                        throw new Error('swatches');
+                    }
+
+                    const data = await res.json();
+
+                    if (!Array.isArray(data)) {
+                        return null;
+                    }
+
+                    return data.map((s) => ({ hex: s.hex, cssVar: toCssVar(s.var) }));
+                })
+                .catch(() => {
+                    swatchEntriesPromise = null;
+
+                    return null;
+                });
+
+            return swatchEntriesPromise;
         }
 
         Statamic.$components.register('theme-color-picker-fieldtype', {
