@@ -18,6 +18,60 @@ function parseRgb(color) {
     return parts.slice(0, 3);
 }
 
+/** @type {Map<string, null | { rgb: number[], alpha: number }>} */
+const measuredColors = new Map();
+let probeCtx;
+
+/**
+ * Mål en beregnet CSS-farve som sRGB.
+ * getComputedStyle giver ikke altid rgb(): color-mix(in oklch, ...) serialiseres
+ * som oklab()/oklch(), hvor tallene er 0-1 og 0-360 og ikke 0-255. Læses de som
+ * RGB, ser enhver baggrund mørk ud, og teksten bliver altid lys.
+ */
+function measureColor(color) {
+    if (!color) return null;
+    if (measuredColors.has(color)) return measuredColors.get(color);
+
+    let result = null;
+    const legacy = color.trim().match(/^rgba?\(([^)]*)\)$/i);
+
+    if (legacy) {
+        const nums = (legacy[1].match(/[\d.]+/g) || []).map(Number);
+        if (nums.length >= 3 && !nums.slice(0, 3).some(Number.isNaN)) {
+            result = { rgb: nums.slice(0, 3), alpha: nums.length >= 4 ? nums[3] : 1 };
+        }
+    } else {
+        result = probeColor(color);
+    }
+
+    measuredColors.set(color, result);
+    return result;
+}
+
+/** Lad browseren konvertere farven til sRGB via et 1x1 canvas. */
+function probeColor(color) {
+    if (probeCtx === undefined) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        probeCtx = canvas.getContext('2d', { willReadFrequently: true }) || null;
+    }
+    if (!probeCtx) return null;
+
+    try {
+        probeCtx.clearRect(0, 0, 1, 1);
+        // Genkender browseren ikke farven, bliver fillStyle stående på gennemsigtig,
+        // og vi ender med alpha 0 - altså samme no-op som hvis der ingen baggrund var.
+        probeCtx.fillStyle = 'rgba(0, 0, 0, 0)';
+        probeCtx.fillStyle = color;
+        probeCtx.fillRect(0, 0, 1, 1);
+        const d = probeCtx.getImageData(0, 0, 1, 1).data;
+        return { rgb: [d[0], d[1], d[2]], alpha: d[3] / 255 };
+    } catch {
+        return null;
+    }
+}
+
 function colorDistance(a, b) {
     return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
 }
@@ -183,13 +237,10 @@ function contrastColorFor(el, rgb) {
 }
 
 function autoContrast(el) {
-    const bg = getComputedStyle(el).backgroundColor;
-    const nums = (bg.match(/[\d.]+/g) || []).map(Number);
-    if (nums.length < 3 || nums.slice(0, 3).some(Number.isNaN)) return;
-    const a = nums.length >= 4 ? nums[3] : 1;
-    if (a === 0) return;
+    const measured = measureColor(getComputedStyle(el).backgroundColor);
+    if (!measured || measured.alpha === 0) return;
 
-    el.style.color = contrastColorFor(el, nums.slice(0, 3));
+    el.style.color = contrastColorFor(el, measured.rgb);
 }
 
 export function applyAutoContrast(root = document) {

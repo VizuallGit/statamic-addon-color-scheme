@@ -285,6 +285,61 @@
             return swatchEntriesPromise;
         }
 
+        // ---------------------------------------------------------------
+        // Fluebenet i paletten
+        //
+        // Core tegner det altid hvidt — usynligt på de lyse felter. Vi kan
+        // ikke nå ind i dets markup, men vi kender paletten, så vi skriver én
+        // CSS-regel pr. lys farve der vender fluebenet mørkt. Ren CSS: rører
+        // hverken feltets værdi, DOM eller events.
+        // ---------------------------------------------------------------
+
+        const CHECK_STYLE_ID = 'color-scheme-check-contrast';
+
+        /** Skæringspunktet hvor sort og hvid giver samme WCAG-kontrast. */
+        function needsDarkCheck(hex) {
+            const rgb = parseHex(hex);
+            if (!rgb || rgb.some(Number.isNaN)) return false;
+            const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+            return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]) > 0.179;
+        }
+
+        let lastCheckCss = '';
+
+        function paintCheckContrast(entries) {
+            const light = [];
+
+            for (const entry of entries) {
+                if (!entry?.hex || !needsDarkCheck(entry.hex)) continue;
+                const [r, g, b] = parseHex(entry.hex);
+                const color = `rgb(${r}, ${g}, ${b})`;
+                if (!light.includes(color)) light.push(color);
+            }
+
+            const css = light.length
+                ? light.map(c => `[data-ui-popover-content] button[style*="background-color: ${c}"] svg`).join(',\n')
+                    + ' { color: #111827; }'
+                : '';
+
+            if (css === lastCheckCss) return;
+            lastCheckCss = css;
+
+            let el = document.getElementById(CHECK_STYLE_ID);
+
+            if (!css) {
+                el?.remove();
+                return;
+            }
+
+            if (!el) {
+                el = document.createElement('style');
+                el.id = CHECK_STYLE_ID;
+                document.head.appendChild(el);
+            }
+
+            el.textContent = css;
+        }
+
         Statamic.$components.register('theme-color-picker-fieldtype', {
             inheritAttrs: false,
             props: {
@@ -355,6 +410,9 @@
                     const idx = indexOfStored(val, swatchEntries.value);
                     if (idx !== -1) stepIndex.value = idx;
                 }, { immediate: true });
+
+                // Fluebenets farve følger paletten.
+                watch(swatchEntries, (entries) => paintCheckContrast(entries), { immediate: true });
 
                 // Opgradér gamle hex-snapshots til CSS-var, når de matcher en swatch.
                 watch(swatchEntries, (entries) => {

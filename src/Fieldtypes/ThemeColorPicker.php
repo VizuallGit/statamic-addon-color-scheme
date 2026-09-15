@@ -27,6 +27,18 @@ class ThemeColorPicker extends Fieldtype
         return 'theme-color-picker';
     }
 
+    protected function configFieldItems(): array
+    {
+        return [
+            'default' => [
+                'display'      => __('Default Value'),
+                'instructions' => __('statamic::messages.fields_default_instructions'),
+                'type'         => 'theme_color_picker',
+                'width'        => 50,
+            ],
+        ];
+    }
+
     /**
      * Behold CSS-custom-properties i output (var(--primary-950)).
      * Live Preview/fremside opdaterer via :root (--primary-* fra theme_color_scale
