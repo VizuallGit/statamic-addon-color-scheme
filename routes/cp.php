@@ -6,6 +6,11 @@ use Vizuall\ColorScheme\Fieldtypes\ThemeColorPicker;
 Route::get('color-scheme/swatches', function () {
     ThemeColorPicker::clearSwatchCache();
 
+    // Farverne står i site.css: den er kilden, ikke theme_settings.
+    if (($site = ThemeColorPicker::siteCssSwatches()) !== null) {
+        return response()->json($site);
+    }
+
     // Ugemte theme_settings fra Visual Editor Live Preview-stash (hvis aktiv).
     try {
         $overrides = Cache::get('sve-globals-preview.'.session()->getId(), []);

@@ -5,6 +5,7 @@ namespace Vizuall\ColorScheme\Fieldtypes;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
 use Statamic\Fields\Fieldtype;
+use Vizuall\ColorScheme\Support\SiteCssColors;
 
 class ThemeColorPicker extends Fieldtype
 {
@@ -69,10 +70,19 @@ class ThemeColorPicker extends Fieldtype
         return static::resolveCssVar($m[1]) ?? $value;
     }
 
-    /** Resolvér --primary-950 / --gray-100 til hex ud fra nuværende theme_settings. */
+    /** Resolvér --primary-950 / --gray-100 til hex — fra site.css når farverne står dér, ellers theme_settings. */
     public static function resolveCssVar(string $varName): ?string
     {
         $name = ltrim($varName, '-');
+        $site = SiteCssColors::all();
+
+        if ($site) {
+            $key = preg_replace('/-brand$/', '', $name);
+
+            if (isset($site[$key])) {
+                return $site[$key];
+            }
+        }
 
         if (preg_match('/^gray-(\d+)$/', $name, $m)) {
             $idx = array_search((int) $m[1], self::STEP_NAMES, true);
@@ -233,9 +243,42 @@ class ThemeColorPicker extends Fieldtype
         return null;
     }
 
+    /**
+     * Farverne fra site.css som [{hex, var}], plus de grå trin — eller null når
+     * sitet ikke har sine farver dér. Står de i site.css, er det den ene kilde:
+     * hverken theme_settings eller dets ugemte Live Preview-udgave bruges.
+     */
+    public static function siteCssSwatches(): ?array
+    {
+        $site = SiteCssColors::all();
+
+        if (! $site) {
+            return null;
+        }
+
+        $result = [];
+
+        foreach ($site as $name => $value) {
+            // Paletten viser kun farver den kan tegne og sammenligne: hex.
+            if (preg_match('/^#[0-9a-fA-F]{3,8}$/', $value)) {
+                $result[] = ['hex' => $value, 'var' => "--{$name}"];
+            }
+        }
+
+        foreach (self::GRAY_STEPS as $i => $hex) {
+            $result[] = ['hex' => $hex, 'var' => '--gray-'.(self::STEP_NAMES[$i] ?? ($i * 100))];
+        }
+
+        return $result;
+    }
+
     // Returnerer [{hex, var}] — var er CSS-custom-property-navn (fx --primary-500).
     public static function buildSwatchesWithVars(): array
     {
+        if (($site = static::siteCssSwatches()) !== null) {
+            return $site;
+        }
+
         try {
             $variables = static::loadVariables();
             if (! $variables) {

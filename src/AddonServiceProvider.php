@@ -17,6 +17,8 @@ class AddonServiceProvider extends BaseAddonServiceProvider
 
     protected $tags = [
         Tags\ThemeColorScale::class,
+        // Farverne fra site.css på :root — kilden når sitet har flyttet dem dertil.
+        Tags\ThemeTokens::class,
         // Farveskemaerne som JSON til front-end. Bliver stående så længe
         // skemaerne bruges — temafarve-vælgeren afløser dem først når den er
         // besluttet, og indtil da skal det her virke uændret.
