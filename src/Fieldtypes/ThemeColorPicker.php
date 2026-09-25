@@ -265,8 +265,11 @@ class ThemeColorPicker extends Fieldtype
             }
         }
 
-        foreach (self::GRAY_STEPS as $i => $hex) {
-            $result[] = ['hex' => $hex, 'var' => '--gray-'.(self::STEP_NAMES[$i] ?? ($i * 100))];
+        // De grå trin er med, også når sitet ikke har dem i site.css.
+        if (! isset($site['gray-500'])) {
+            foreach (self::GRAY_STEPS as $i => $hex) {
+                $result[] = ['hex' => $hex, 'var' => '--gray-'.(self::STEP_NAMES[$i] ?? ($i * 100))];
+            }
         }
 
         return $result;

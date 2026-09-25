@@ -7,10 +7,10 @@ namespace Vizuall\ColorScheme\Support;
  * `--color-primary-900: #11121b;` → `['primary-900' => '#11121b']`, in file order.
  *
  * A site that keeps its colors there has one source for them: Visual Editor's
- * color panel writes the file, `{{ theme_tokens }}` serves it on `:root` at
- * request time (no build), and the pickers offer the same list. A site whose
- * `@theme` only points at variables (`--color-primary: var(--primary)`) gets
- * an empty list and keeps using theme_settings.
+ * theme panel writes the file, the site's `{{ theme_tokens }}` tag serves it
+ * on `:root` at request time (no build), and the pickers offer the same list.
+ * A site whose `@theme` only points at variables (`--color-primary:
+ * var(--primary)`) gets an empty list and keeps using theme_settings.
  *
  * Only literal colors are read. A token that points at another variable, like
  * `--color-contrast-light: var(--contrast-light)`, is left to site.css.
@@ -58,24 +58,5 @@ class SiteCssColors
         }
 
         return $colors;
-    }
-
-    /**
-     * Each color as `{{ theme_tokens }}` puts it on `:root`: `--color-x`, plus
-     * the short `--x: var(--color-x)` that templates, CSS and saved field
-     * values (`var(--primary-600)`) use.
-     *
-     * @param  array<string, string>  $colors
-     */
-    public static function rootCss(array $colors): string
-    {
-        $lines = [];
-
-        foreach ($colors as $name => $value) {
-            $lines[] = "--color-{$name}: {$value};";
-            $lines[] = "--{$name}: var(--color-{$name});";
-        }
-
-        return $lines ? ':root{'.implode('', $lines).'}' : '';
     }
 }
