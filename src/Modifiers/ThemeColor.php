@@ -8,7 +8,7 @@ use Vizuall\ColorScheme\Fieldtypes\ThemeColorPicker;
 class ThemeColor extends Modifier
 {
     /**
-     * Resolvér var(--primary-950) → aktuel hex (inkl. lysniveau/saturation).
+     * Resolvér var(--primary-950) → aktuel hex.
      * Hex og andre værdier sendes uændret igennem.
      */
     public function index($value, $params, $context): mixed

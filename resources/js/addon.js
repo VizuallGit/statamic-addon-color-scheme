@@ -59,17 +59,16 @@
         const SCALE_MIN   = SCALE_STEPS[SCALE_STEPS.length - 1];  // 0.122 (trin 950)
         const SCALE_SPAN  = SCALE_MAX - SCALE_MIN;
 
-        function hexScale(hex, bias = 0, saturation = 0) {
+        // Loftet på 0.97 stod her, før lysniveau og saturation blev fjernet.
+        // Det bliver: skalaen skal give præcis de samme farver som før.
+        const SCALE_TOP = Math.min(0.97, SCALE_MAX);
+
+        function hexScale(hex) {
             const [, C, H] = hexToOklch(hex);
-            const offset  = bias / 100 * 0.35;
-            // Komprimér skalaen i stedet for at clippe — alle trin forbliver unikke
-            const minL    = Math.max(0.05, SCALE_MIN + offset);
-            const maxL    = Math.min(0.97, SCALE_MAX + offset);
-            const satMult = Math.max(0, 1 + saturation / 100);
             return SCALE_STEPS.map(stepL => {
                 const t = (stepL - SCALE_MIN) / SCALE_SPAN;
-                const L = minL + t * (maxL - minL);
-                return oklchToHex(L, C * Math.min(1, L * 2, (1 - L) * 2) * satMult, H);
+                const L = SCALE_MIN + t * (SCALE_TOP - SCALE_MIN);
+                return oklchToHex(L, C * Math.min(1, L * 2, (1 - L) * 2), H);
             });
         }
 
@@ -82,10 +81,10 @@
         const STEP_NAMES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
         const PALETTE_KEYS = [
-            { key: 'primary_color',    name: 'primary',    biasKey: 'primary_tones_bias',    satKey: 'primary_saturation' },
-            { key: 'secondary_color',  name: 'secondary',  biasKey: 'secondary_tones_bias',  satKey: 'secondary_saturation' },
-            { key: 'tertiary_color',   name: 'tertiary',   biasKey: 'tertiary_tones_bias',   satKey: 'tertiary_saturation' },
-            { key: 'quaternary_color', name: 'quaternary', biasKey: 'quaternary_tones_bias', satKey: 'quaternary_saturation' },
+            { key: 'primary_color',    name: 'primary' },
+            { key: 'secondary_color',  name: 'secondary' },
+            { key: 'tertiary_color',   name: 'tertiary' },
+            { key: 'quaternary_color', name: 'quaternary' },
         ];
 
         function isThemeSettingsValues(vals) {
@@ -96,12 +95,10 @@
         function buildThemeScaleCss(vals) {
             if (!vals || typeof vals !== 'object') return '';
             const lines = [];
-            for (const { key, name, biasKey, satKey } of PALETTE_KEYS) {
+            for (const { key, name } of PALETTE_KEYS) {
                 const hex = vals[key];
                 if (!hex || !/^#[0-9a-fA-F]{3,8}$/.test(String(hex))) continue;
-                const bias = Number(vals[biasKey] ?? 0);
-                const sat = Number(vals[satKey] ?? 0);
-                const scale = hexScale(hex, Number.isFinite(bias) ? bias : 0, Number.isFinite(sat) ? sat : 0);
+                const scale = hexScale(hex);
                 lines.push(`--${name}:${hex}`);
                 lines.push(`--${name}-brand:${hex}`);
                 scale.forEach((h, i) => lines.push(`--${name}-${STEP_NAMES[i]}:${h}`));
@@ -110,11 +107,23 @@
         }
 
         /**
+         * En CP-form kan ligge i en iframe (Theme Settings gør), så både det
+         * vindue vi sender fra og det vi lytter i skal være hele kæden.
+         */
+        function eventTargets() {
+            const targets = new Set([window]);
+            try {
+                if (window.parent) targets.add(window.parent);
+            } catch { /* ignore */ }
+            try {
+                if (window.top) targets.add(window.top);
+            } catch { /* ignore */ }
+            return targets;
+        }
+
+        /**
          * Live Preview :root + sektionens Theme Color Picker-swatches.
-         * --primary (brand) er fast hex; --primary-50…950 følger lys/sat.
-         *
-         * Palette i andre forms (hero osv.) lytter på `sve-theme-colors` —
-         * den skal fires på top-vinduet, fordi Theme Settings ligger i iframe.
+         * --primary (brand) er fast hex; --primary-50…950 er afledte trin.
          */
         let lastLiveThemeCss = '';
         let lastThemeBroadcast = '';
@@ -124,24 +133,14 @@
 
             // Kun palette-relevante felter — undgå støj fra resten af formen.
             const slim = {};
-            for (const { key, biasKey, satKey } of PALETTE_KEYS) {
+            for (const { key } of PALETTE_KEYS) {
                 if (vals[key] != null) slim[key] = vals[key];
-                if (vals[biasKey] != null) slim[biasKey] = vals[biasKey];
-                if (vals[satKey] != null) slim[satKey] = vals[satKey];
             }
             const key = JSON.stringify(slim);
             if (key === lastThemeBroadcast) return;
             lastThemeBroadcast = key;
 
-            const targets = new Set([window]);
-            try {
-                if (window.parent) targets.add(window.parent);
-            } catch { /* ignore */ }
-            try {
-                if (window.top) targets.add(window.top);
-            } catch { /* ignore */ }
-
-            targets.forEach((w) => {
+            eventTargets().forEach((w) => {
                 try {
                     w.dispatchEvent(new CustomEvent('sve-theme-colors', { detail: slim }));
                 } catch { /* ignore */ }
@@ -208,15 +207,13 @@
             return name.startsWith('var(') ? name : `var(${name})`;
         }
 
-        function entriesFromVals(vals, meta = {}) {
+        function entriesFromVals(vals) {
             const entries = [];
-            for (const { key, name, biasKey, satKey } of PALETTE_KEYS) {
+            for (const { key, name } of PALETTE_KEYS) {
                 if (!vals[key]) continue;
-                const bias = vals[biasKey] ?? meta.biases?.[key] ?? 0;
-                const sat  = vals[satKey]  ?? meta.saturations?.[key] ?? 0;
-                const scale = hexScale(vals[key], bias, sat);
+                const scale = hexScale(vals[key]);
                 // --primary = brand-hex (matcher Theme Settings-feltet).
-                // Trin 50–950 er afledte toner (lys-/mørkere + bias/sat).
+                // Trin 50–950 er afledte toner.
                 entries.push({ hex: vals[key], cssVar: `var(--${name})` });
                 scale.forEach((h, i) => {
                     entries.push({ hex: h, cssVar: `var(--${name}-${STEP_NAMES[i]})` });
@@ -284,6 +281,20 @@
 
             return swatchEntriesPromise;
         }
+
+        // Tema-panelet skriver farverne i site.css, og swatch-ruten læser den
+        // fil. Efter et gem er hentningen vi holder på en palette, der ikke
+        // findes længere — smid den væk, så den næste henter de gemte farver.
+        // Uden det var en genindlæsning af hele CP'et den eneste vej.
+        function forgetSwatchEntries() {
+            swatchEntriesPromise = null;
+        }
+
+        eventTargets().forEach((w) => {
+            try {
+                w.addEventListener('sve:site-css-saved', forgetSwatchEntries);
+            } catch { /* ignore */ }
+        });
 
         // ---------------------------------------------------------------
         // Fluebenet i paletten
@@ -360,10 +371,10 @@
 
                 const swatchEntries = computed(() => {
                     if (inThemeSettings.value) {
-                        return entriesFromVals(getPublishValues(publishContext), props.meta);
+                        return entriesFromVals(getPublishValues(publishContext));
                     }
                     if (liveThemeVals.value && isThemeSettingsValues(liveThemeVals.value)) {
-                        return entriesFromVals(liveThemeVals.value, props.meta);
+                        return entriesFromVals(liveThemeVals.value);
                     }
                     if (remoteEntries.value?.length) {
                         return remoteEntries.value;
@@ -400,11 +411,30 @@
                         }
                     };
                     window.addEventListener('sve-theme-colors', onTheme);
-                    onUnmounted(() => window.removeEventListener('sve-theme-colors', onTheme));
+
+                    // Tema-panelet har gemt site.css. Modulets egen lytter er
+                    // sat før nogen feltinstans, så den gamle hentning er
+                    // allerede glemt her — vi henter bare paletten igen.
+                    const onCssSaved = () => { void refreshRemoteSwatches(); };
+                    const targets = eventTargets();
+                    targets.forEach((w) => {
+                        try {
+                            w.addEventListener('sve:site-css-saved', onCssSaved);
+                        } catch { /* ignore */ }
+                    });
+
+                    onUnmounted(() => {
+                        window.removeEventListener('sve-theme-colors', onTheme);
+                        targets.forEach((w) => {
+                            try {
+                                w.removeEventListener('sve:site-css-saved', onCssSaved);
+                            } catch { /* ignore */ }
+                        });
+                    });
                 });
 
                 // Kun opdatér index når værdien findes i paletten — ellers bevar
-                // forrige trin, så lysniveau/saturation stadig kan følge med.
+                // forrige trin, så en fri farve ikke nulstiller det.
                 watch(() => props.value, (val) => {
                     if (!val) { stepIndex.value = -1; return; }
                     const idx = indexOfStored(val, swatchEntries.value);
@@ -432,14 +462,29 @@
                     emit('update:value', (idx !== -1 && entries[idx].cssVar) ? entries[idx].cssVar : val);
                 };
 
-                // Når bias/sat/primary ændres, følg samme trin-index (behold CSS-var-token).
+                // Paletten kan skifte under feltet — temaet gemmes, mens formen
+                // står åben. En gemt var(--…) er selv trinnet: den peger på den
+                // nye farve, så vi genfinder kun dens plads og lader værdien
+                // være. Ellers ville en tilføjet farve rykke alle indeks ét trin
+                // og skrive en ny farve ind i hvert åbent felt.
                 watch(swatchEntries, (newEntries, oldEntries) => {
-                    if (!oldEntries?.length) return;
-                    if (stepIndex.value === -1 || !newEntries.length) return;
+                    if (!oldEntries?.length || !newEntries.length) return;
+
+                    const val = props.value;
+
+                    if (val && String(val).startsWith('var(')) {
+                        const idx = indexOfStored(val, newEntries);
+                        if (idx !== -1) stepIndex.value = idx;
+                        return;
+                    }
+
+                    // En ren hex følger sit trin — det er den vej lysere/mørkere
+                    // stadig virker på et felt, der aldrig fik et var-token.
+                    if (stepIndex.value === -1) return;
                     const next = newEntries[stepIndex.value];
                     if (!next) return;
                     const stored = next.cssVar || next.hex;
-                    if (stored && stored !== props.value) {
+                    if (stored && stored !== val) {
                         emit('update:value', stored);
                     }
                 });
@@ -477,9 +522,7 @@
                     const vals = publishContext ? getPublishValues(publishContext) : {};
                     const hex = vals[props.config.base_color ?? 'primary_color'];
                     if (!hex) return [];
-                    const bias = vals[props.config.bias_field       ?? 'primary_tones_bias']  ?? 0;
-                    const sat  = vals[props.config.saturation_field ?? 'primary_saturation']  ?? 0;
-                    return hexScale(hex, bias, sat).map((color, i) => ({ step: STEP_LABELS[i], color }));
+                    return hexScale(hex).map((color, i) => ({ step: STEP_LABELS[i], color }));
                 });
 
                 return () => {

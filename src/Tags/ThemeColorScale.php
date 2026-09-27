@@ -27,9 +27,7 @@ class ThemeColorScale extends Tags
 
             foreach (ThemeColorPicker::discoverPalettes($vars) as $palette) {
                 $hex   = (string) $vars->get($palette['color']);
-                $bias  = (int) ($vars->get($palette['bias']) ?? 0);
-                $sat   = (int) ($vars->get($palette['sat'])  ?? 0);
-                $scale = ThemeColorPicker::scale($hex, $bias, $sat);
+                $scale = ThemeColorPicker::scale($hex);
                 $name  = $palette['name'];
 
                 // --primary = brand-hex fra Theme Settings (matcher farvefeltet).

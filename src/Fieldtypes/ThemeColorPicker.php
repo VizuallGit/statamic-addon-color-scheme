@@ -42,8 +42,7 @@ class ThemeColorPicker extends Fieldtype
 
     /**
      * Behold CSS-custom-properties i output (var(--primary-950)).
-     * Live Preview/fremside opdaterer via :root (--primary-* fra theme_color_scale
-     * + live injektion når lysniveau/saturation ændres).
+     * Live Preview/fremside opdaterer via :root (--primary-* fra theme_color_scale).
      */
     public function augment($value): mixed
     {
@@ -99,9 +98,7 @@ class ThemeColorPicker extends Fieldtype
             foreach (static::discoverPalettes($variables) as $palette) {
                 $pname = $palette['name'];
                 $hex   = (string) $variables->get($palette['color']);
-                $bias  = (int) ($variables->get($palette['bias']) ?? 0);
-                $sat   = (int) ($variables->get($palette['sat']) ?? 0);
-                $scale = static::scale($hex, $bias, $sat);
+                $scale = static::scale($hex);
 
                 // --primary = brand-hex (samme som Theme Settings-feltet).
                 if ($name === $pname) {
@@ -132,66 +129,30 @@ class ThemeColorPicker extends Fieldtype
         return [
             'swatches'         => static::buildSwatches(),
             'swatchesWithVars' => static::buildSwatchesWithVars(),
-            'biases'           => static::buildBiases(),
-            'saturations'      => static::buildSaturations(),
         ];
     }
 
-    public static function buildBiases(): array
-    {
-        try {
-            $global = GlobalSet::findByHandle('theme_settings');
-            if (!$global) return [];
-            $variables = $global->in(Site::default()->handle());
-            if (!$variables) return [];
-
-            return [
-                'primary_color'    => (int) ($variables->get('primary_tones_bias')    ?? 0),
-                'secondary_color'  => (int) ($variables->get('secondary_tones_bias')  ?? 0),
-                'tertiary_color'   => (int) ($variables->get('tertiary_tones_bias')   ?? 0),
-                'quaternary_color' => (int) ($variables->get('quaternary_tones_bias') ?? 0),
-            ];
-        } catch (\Throwable) {
-            return [];
-        }
-    }
-
-    public static function buildSaturations(): array
-    {
-        try {
-            $global = GlobalSet::findByHandle('theme_settings');
-            if (!$global) return [];
-            $variables = $global->in(Site::default()->handle());
-            if (!$variables) return [];
-
-            return [
-                'primary_color'    => (int) ($variables->get('primary_saturation')    ?? 0),
-                'secondary_color'  => (int) ($variables->get('secondary_saturation')  ?? 0),
-                'tertiary_color'   => (int) ($variables->get('tertiary_saturation')   ?? 0),
-                'quaternary_color' => (int) ($variables->get('quaternary_saturation') ?? 0),
-            ];
-        } catch (\Throwable) {
-            return [];
-        }
-    }
-
-    public static function scale(string $hex, int $bias = 0, int $saturation = 0): array
+    /**
+     * Farveskalaen: ét trin pr. lysniveau i LIGHTNESS_STEPS.
+     *
+     * Loftet på 0.97 stod her, før lysniveau og saturation blev fjernet. Det
+     * bliver: skalaen skal give præcis de samme farver som før.
+     */
+    public static function scale(string $hex): array
     {
         [, $C, $H] = static::hexToOklch($hex);
-        $offset   = $bias / 100 * 0.35;
-        $scaleMax = self::LIGHTNESS_STEPS[0];                                   // 0.971
-        $scaleMin = self::LIGHTNESS_STEPS[count(self::LIGHTNESS_STEPS) - 1];   // 0.122
-        $span     = $scaleMax - $scaleMin;
-        $minL     = max(0.05, $scaleMin + $offset);
-        $maxL     = min(0.97, $scaleMax + $offset);
-        $satMult  = max(0.0, 1 + $saturation / 100);
 
-        return array_map(function ($stepL) use ($C, $H, $minL, $maxL, $scaleMin, $span, $satMult) {
-            $t = ($stepL - $scaleMin) / $span;
-            $L = $minL + $t * ($maxL - $minL);
-            $chromaScale = min(1.0, $L * 2.0, (1.0 - $L) * 2.0);
-            return static::oklchToHex($L, $C * $chromaScale * $satMult, $H);
-        }, self::LIGHTNESS_STEPS);
+        $steps = self::LIGHTNESS_STEPS;
+        $min   = $steps[count($steps) - 1];   // 0.122 (trin 950)
+        $max   = min(0.97, $steps[0]);        // 0.971 (trin 50), med loft
+        $span  = $steps[0] - $min;
+
+        return array_map(function ($stepL) use ($C, $H, $min, $max, $span) {
+            $L      = $min + ($stepL - $min) / $span * ($max - $min);
+            $chroma = min(1.0, $L * 2.0, (1.0 - $L) * 2.0);
+
+            return static::oklchToHex($L, $C * $chroma, $H);
+        }, $steps);
     }
 
     // Scanner theme_settings dynamisk for alle *_color-felter.
@@ -217,8 +178,6 @@ class ThemeColorPicker extends Fieldtype
             $palettes[] = [
                 'name'  => $name,
                 'color' => $key,
-                'bias'  => $name.'_tones_bias',
-                'sat'   => $name.'_saturation',
             ];
         }
 
@@ -304,10 +263,8 @@ class ThemeColorPicker extends Fieldtype
             if ($hex === '') {
                 continue;
             }
-            $bias = (int) ($data[$palette['bias']] ?? 0);
-            $sat  = (int) ($data[$palette['sat']] ?? 0);
-            $name = $palette['name'];
-            $scale = static::scale($hex, $bias, $sat);
+            $name  = $palette['name'];
+            $scale = static::scale($hex);
 
             // --primary = brand-hex (matcher Theme Settings). Trin 50–950 er afledte.
             $result[] = ['hex' => $hex, 'var' => "--{$name}"];
