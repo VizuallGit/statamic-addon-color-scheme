@@ -149,6 +149,12 @@ function rootPropertyNames() {
         }
     }
 
+    // Tema-panelet i Live Preview maler farverne direkte på <html style="…">,
+    // også trin der ikke står i noget stylesheet endnu.
+    for (const prop of document.documentElement.style) {
+        if (prop.startsWith('--')) names.add(prop);
+    }
+
     return names;
 }
 
@@ -396,6 +402,18 @@ observer.observe(document.body, {
     attributes: true,
     attributeFilter: ['class', 'disabled'],
 });
+
+// Farverne på :root skifter uden at siden genindlæses (Tema-panelet maler dem
+// på <html style="…">). Så skal paletterne læses igen, og alt skal måles om.
+let rootScheduled = false;
+new MutationObserver(() => {
+    if (rootScheduled) return;
+    rootScheduled = true;
+    requestAnimationFrame(() => {
+        rootScheduled = false;
+        applyAutoContrast();
+    });
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
 
 function onHoverContrast(e) {
     const el = e.target.closest?.('[data-auto-contrast-hover]');
