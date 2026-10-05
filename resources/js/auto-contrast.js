@@ -10,9 +10,14 @@
  * liste.
  *
  * Valget af tekstfarve:
- *   lys tekst  → palettens laveste trin, hvis det er <= LIGHT_MAX_STEP
- *   mørk tekst → palettens højeste trin, hvis det er >= DARK_MIN_STEP
+ *   lys tekst  → palettens lyseste trin, hvis det kan læses på baggrunden
+ *   mørk tekst → palettens mørkeste trin, hvis det kan læses på baggrunden
  *   ellers     → GRAY_LIGHT / GRAY_DARK
+ *
+ * Lyst, mørkt og læseligt måles på selve farven, ikke på trinnets navn:
+ * Tema-panelet holder navnene fast når farven ændres eller et trin gøres
+ * lidt lysere, så en 250 kan sagtens være lysere end en 200. Læseligt er en
+ * kontrast på mindst MIN_CONTRAST mod baggrunden.
  *
  * Grå er låst i temaet og har altid 50-950, så den er et sikkert sted at
  * falde tilbage til. Brandfarven uden tal (--primary) bruges til at genkende
@@ -27,10 +32,8 @@
 
 const CONTRAST_SELECTOR = '[data-auto-contrast], [data-auto-contrast-hover]';
 
-/** Det lyseste trin må højst hedde dette for at kunne bruges som lys tekst. */
-const LIGHT_MAX_STEP = 200;
-/** Det mørkeste trin skal mindst hedde dette for at kunne bruges som mørk tekst. */
-const DARK_MIN_STEP = 800;
+/** WCAG AA for brødtekst: et trin bliver kun tekstfarve, når det læses så godt på baggrunden. */
+const MIN_CONTRAST = 4.5;
 
 const GRAY_LIGHT = 'var(--gray-50)';
 const GRAY_DARK = 'var(--gray-900)';
@@ -38,7 +41,7 @@ const GRAY_DARK = 'var(--gray-900)';
 /**
  * Paletterne som de står på :root.
  *
- * @type {null | Map<string, { samples: { rgb: number[] }[], light: string | null, dark: string | null }>}
+ * @type {null | Map<string, { samples: { rgb: number[] }[], light: { name: string, rgb: number[] }, dark: { name: string, rgb: number[] } }>}
  */
 let scaleCache = null;
 
@@ -191,7 +194,7 @@ function getScaleCache() {
         family.samples.push({ rgb });
 
         if (match[2] !== undefined) {
-            family.steps.push({ step: parseInt(match[2], 10), name: prop });
+            family.steps.push({ name: prop, rgb });
         }
     }
 
@@ -203,14 +206,12 @@ function getScaleCache() {
         // til grå — hvilket er det rigtige svar.
         if (!family.steps.length) continue;
 
-        const sorted = [...family.steps].sort((a, b) => a.step - b.step);
-        const lightest = sorted[0];
-        const darkest = sorted[sorted.length - 1];
+        const byLuminance = [...family.steps].sort((a, b) => luminance(b.rgb) - luminance(a.rgb));
 
         scaleCache.set(name, {
             samples: family.samples,
-            light: lightest && lightest.step <= LIGHT_MAX_STEP ? `var(${lightest.name})` : null,
-            dark: darkest && darkest.step >= DARK_MIN_STEP ? `var(${darkest.name})` : null,
+            light: byLuminance[0],
+            dark: byLuminance[byLuminance.length - 1],
         });
     }
 
@@ -346,8 +347,25 @@ function contrastColorFor(el, rgb) {
     if (!family) return gray;
 
     // Mangler paletten en tone yderligt nok, er grå det nærmeste vi kommer
-    // en læsbar tekst — en tint på 350 oven på sin egen 800 er ikke tekst.
-    return (wantLightText ? family.light : family.dark) || gray;
+    // en læsbar tekst — en mellemblå tint oven på sin egen mørkeblå er ikke tekst.
+    const step = wantLightText ? family.light : family.dark;
+
+    return contrastRatio(step.rgb, rgb) >= MIN_CONTRAST ? `var(${step.name})` : gray;
+}
+
+/** WCAG's relative luminans af en sRGB-farve, 0 (sort) til 1 (hvid). */
+function luminance(rgb) {
+    const [r, g, b] = rgb.map((v) => {
+        const c = v / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG's kontrastforhold mellem to farver, 1 til 21. */
+function contrastRatio(a, b) {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
 }
 
 function autoContrast(el) {
