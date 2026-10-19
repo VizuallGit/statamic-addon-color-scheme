@@ -28,6 +28,15 @@
  * data-auto-contrast="gray" (og data-auto-contrast-hover="gray") springer
  * paletten over og bruger grå. Det er til knapper og lignende, hvor en tonet
  * tekstfarve ligger for tæt på sin egen baggrund.
+ *
+ * Tekstfarver fra Tema → Typografi (--body-color, --heading-color,
+ * --h1-color … --h6-color i site.css):
+ *   mørk tekst → --body-color, når temaet har en og den kan læses på
+ *                baggrunden; ellers palettens mørkeste trin som før.
+ *                Overskrifterne beholder deres egne farver fra temaet.
+ *   lys tekst  → elementet får også --color-text. Sitets type.css lader
+ *                --color-text gå forud for overskriftsfarverne, så en mørk
+ *                overskriftsfarve ikke lægger sig på en mørk baggrund.
  */
 
 const CONTRAST_SELECTOR = '[data-auto-contrast], [data-auto-contrast-hover]';
@@ -332,12 +341,35 @@ function wantsGray(el) {
         || el.getAttribute('data-auto-contrast-hover') === 'gray';
 }
 
+/** Skal teksten være lys på denne baggrund? */
+function wantsLightText(rgb) {
+    return (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 <= 128;
+}
+
+/**
+ * Temaets brødtekstfarve (--body-color på :root) som sRGB, eller null når
+ * temaet ikke har nogen. Den beregnede værdi af en custom property har
+ * var()-referencerne udfyldt, så var(--primary-800) kommer ud som en farve.
+ */
+function bodyColor() {
+    const value = getComputedStyle(document.documentElement).getPropertyValue('--body-color').trim();
+    const measured = value ? measureColor(value) : null;
+
+    return measured && measured.alpha > 0 ? measured : null;
+}
+
 function contrastColorFor(el, rgb) {
-    const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
-    const wantLightText = brightness <= 128;
+    const wantLightText = wantsLightText(rgb);
     const gray = wantLightText ? GRAY_LIGHT : GRAY_DARK;
 
     if (wantsGray(el)) return gray;
+
+    // Mørk tekst på en lys baggrund: temaets brødtekstfarve, hvis den kan læses.
+    // Kun på data-auto-contrast — en hover-knap har sin egen farve.
+    if (!wantLightText && el.hasAttribute('data-auto-contrast')) {
+        const body = bodyColor();
+        if (body && contrastRatio(body.rgb, rgb) >= MIN_CONTRAST) return 'var(--body-color)';
+    }
 
     const name = authoredBackgroundFamily(el)
         || familyFromComputedRgb(rgb)
@@ -372,7 +404,19 @@ function autoContrast(el) {
     const measured = measureColor(getComputedStyle(el).backgroundColor);
     if (!measured || measured.alpha === 0) return;
 
-    el.style.color = contrastColorFor(el, measured.rgb);
+    const color = contrastColorFor(el, measured.rgb);
+    el.style.color = color;
+
+    // Lys tekst: overskrifterne skal følge med i stedet for at bruge temaets
+    // (mørke) overskriftsfarver. Kun den --color-text vi selv har sat fjernes
+    // igen; en sektion med sin egen tekstfarve sætter den i sin CSS, ikke her.
+    if (wantsLightText(measured.rgb)) {
+        el.style.setProperty('--color-text', color);
+        el._contrastSetText = true;
+    } else if (el._contrastSetText) {
+        el.style.removeProperty('--color-text');
+        el._contrastSetText = false;
+    }
 }
 
 export function applyAutoContrast(root = document) {
