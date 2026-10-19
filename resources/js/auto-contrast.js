@@ -417,74 +417,7 @@ function autoContrast(el) {
         el.style.removeProperty('--color-text');
         el._contrastSetText = false;
     }
-
-    if (el.hasAttribute('data-auto-contrast')) fixEyebrows(el, measured.rgb);
 }
-
-/**
- * Overtitler (.eyebrow) har deres egen farve (--eyebrow-color, typisk temaets
- * primære), som ikke følger med teksten ovenfor. På en mørk baggrund kan de
- * forsvinde. Hver overtitel måles (inkl. dens opacity) mod den nærmeste
- * baggrundsfarve mellem den og sektionen; under MIN_CONTRAST blandes farven
- * mod hvid (mørk baggrund) eller sort (lys baggrund), til den kan læses — så
- * den beholder sin tone så langt det går. Mærker (.is-chip) har deres egen
- * baggrund og røres ikke; det gør overtitler under en baggrund med billede
- * heller ikke, og heller ikke dem i en indlejret data-auto-contrast.
- */
-function fixEyebrows(section, sectionBg) {
-    const sectionImage = getComputedStyle(section).backgroundImage;
-    if (sectionImage && sectionImage !== 'none') return;
-
-    section.querySelectorAll('.eyebrow').forEach((eb) => {
-        if (eb.classList.contains('is-chip') || eb.closest('[data-auto-contrast]') !== section) return;
-
-        // Mål overtitlens egen farve, ikke en tidligere rettelse.
-        if (eb._contrastFixed) {
-            eb.style.removeProperty('color');
-            eb.style.removeProperty('opacity');
-            eb._contrastFixed = false;
-        }
-
-        const bg = eyebrowBackground(eb, section, sectionBg);
-        if (!bg) return;
-
-        const cs = getComputedStyle(eb);
-        const own = measureColor(cs.color);
-        if (!own) return;
-
-        const alpha = own.alpha * (parseFloat(cs.opacity) || 1);
-        if (contrastRatio(mixRgb(bg, own.rgb, alpha), bg) >= MIN_CONTRAST) return;
-
-        const white = [255, 255, 255];
-        const black = [0, 0, 0];
-        const target = contrastRatio(white, bg) >= contrastRatio(black, bg) ? white : black;
-        let fixed = target;
-        for (let t = 0.1; t < 1; t += 0.1) {
-            const candidate = mixRgb(own.rgb, target, t);
-            if (contrastRatio(candidate, bg) >= MIN_CONTRAST) {
-                fixed = candidate;
-                break;
-            }
-        }
-
-        eb.style.setProperty('color', `rgb(${fixed.join(' ')})`);
-        eb.style.setProperty('opacity', '1');
-        eb._contrastFixed = true;
-    });
-}
-
-/** Nærmeste baggrundsfarve fra overtitlen op til sektionen; null ved et billede. */
-function eyebrowBackground(eb, section, sectionBg) {
-    for (let node = eb.parentElement; node && node !== section; node = node.parentElement) {
-        const cs = getComputedStyle(node);
-        if (cs.backgroundImage && cs.backgroundImage !== 'none') return null;
-        const bg = measureColor(cs.backgroundColor);
-        if (bg && bg.alpha > 0.5) return bg.rgb;
-    }
-    return sectionBg;
-}
-
-const mixRgb = (a, b, t) => a.map((v, i) => Math.round(v * (1 - t) + b[i] * t));
 
 export function applyAutoContrast(root = document) {
     scaleCache = null;
