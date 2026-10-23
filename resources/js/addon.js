@@ -225,12 +225,32 @@
             return entries;
         }
 
+        /**
+         * Én swatch fra serveren som entry. En highlight peger på en palette-
+         * farve og har derfor dens hex. Core's farvefelt kender kun strengen
+         * det tegner og sender den samme streng tilbage ved klik — så en
+         * highlight får sin farve skrevet som rgb(), ikke hex: samme farve,
+         * en anden streng, og klikket på den kan kendes fra klikket på
+         * palettefarven.
+         */
+        function entryFromSwatch(s) {
+            const hex = s.hex;
+            const highlight = !!s.highlight;
+            const rgb = highlight ? parseHex(hex) : null;
+            return {
+                hex,
+                cssVar: toCssVar(s.var),
+                highlight,
+                shown: rgb && !rgb.some(Number.isNaN) ? `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})` : hex,
+            };
+        }
+
+        /** Strengen core tegner og sender tilbage for en entry. */
+        const shownOf = (e) => e.shown || e.hex;
+
         function entriesFromMeta(meta) {
             if (meta.swatchesWithVars?.length) {
-                return meta.swatchesWithVars.map(s => ({
-                    hex: s.hex,
-                    cssVar: toCssVar(s.var),
-                }));
+                return meta.swatchesWithVars.map(entryFromSwatch);
             }
             return (meta.swatches || []).map(hex => ({ hex, cssVar: null }));
         }
@@ -271,7 +291,7 @@
                         return null;
                     }
 
-                    return data.map((s) => ({ hex: s.hex, cssVar: toCssVar(s.var) }));
+                    return data.map(entryFromSwatch);
                 })
                 .catch(() => {
                     swatchEntriesPromise = null;
@@ -351,6 +371,46 @@
             el.textContent = css;
         }
 
+        // ---------------------------------------------------------------
+        // Highlights på egen række nederst
+        //
+        // Serveren sender dem sidst. Core's gitter er `grid grid-cols-6 gap-2`
+        // med én knap pr. swatch i rækkefølge, så den første highlight er
+        // knap nr. K+1 (K palettefarver): den starter en ny række, og den
+        // række får luft og en streg over sig. Ren CSS på core's egen
+        // markup — læser gitterets seks kolonner og gap-2 (0.5rem).
+        // ---------------------------------------------------------------
+
+        const DIVIDER_STYLE_ID = 'color-scheme-highlight-divider';
+        let lastDividerCss = '';
+
+        function paintHighlightDivider(entries) {
+            const k = entries.findIndex(e => e.highlight);
+            const css = k > 0 && entries.slice(k).every(e => e.highlight)
+                ? `[data-ui-popover-content] .grid-cols-6 > button:nth-child(n+${k + 1}):nth-child(-n+${k + 6}) { margin-top: 0.875rem; }\n`
+                    + `[data-ui-popover-content] .grid-cols-6 > button:nth-child(${k + 1}) { grid-column-start: 1; position: relative; }\n`
+                    + `[data-ui-popover-content] .grid-cols-6 > button:nth-child(${k + 1})::before { content: ''; position: absolute; left: 0; top: -0.5rem; width: calc(100% * 6 + 0.5rem * 5); height: 1px; background: currentColor; opacity: 0.18; pointer-events: none; }`
+                : '';
+
+            if (css === lastDividerCss) return;
+            lastDividerCss = css;
+
+            let el = document.getElementById(DIVIDER_STYLE_ID);
+
+            if (!css) {
+                el?.remove();
+                return;
+            }
+
+            if (!el) {
+                el = document.createElement('style');
+                el.id = DIVIDER_STYLE_ID;
+                document.head.appendChild(el);
+            }
+
+            el.textContent = css;
+        }
+
         Statamic.$components.register('theme-color-picker-fieldtype', {
             inheritAttrs: false,
             props: {
@@ -382,13 +442,14 @@
                     return entriesFromMeta(props.meta);
                 });
 
-                const liveSwatches = computed(() => swatchEntries.value.map(e => e.hex));
+                const liveSwatches = computed(() => swatchEntries.value.map(shownOf));
 
-                // Color-fieldtype forstår kun hex — resolvér var(--…) til aktuel hex til UI.
+                // Color-fieldtype kender kun farvestrengen — resolvér var(--…) til den streng, dens swatch tegnes med.
                 const displayValue = computed(() => {
                     const val = props.value;
                     if (!val || !String(val).startsWith('var(')) return val;
-                    return swatchEntries.value.find(e => e.cssVar === val)?.hex ?? val;
+                    const entry = swatchEntries.value.find(e => e.cssVar === val);
+                    return entry ? shownOf(entry) : val;
                 });
 
                 const stepIndex = ref(-1);
@@ -441,8 +502,11 @@
                     if (idx !== -1) stepIndex.value = idx;
                 }, { immediate: true });
 
-                // Fluebenets farve følger paletten.
-                watch(swatchEntries, (entries) => paintCheckContrast(entries), { immediate: true });
+                // Fluebenets farve følger paletten; highlights står på egen række.
+                watch(swatchEntries, (entries) => {
+                    paintCheckContrast(entries);
+                    paintHighlightDivider(entries);
+                }, { immediate: true });
 
                 // Opgradér gamle hex-snapshots til CSS-var, når de matcher en swatch.
                 watch(swatchEntries, (entries) => {
@@ -457,7 +521,8 @@
 
                 const onSelectValue = (val) => {
                     const entries = swatchEntries.value;
-                    const idx = entries.findIndex(e => e.hex === val);
+                    // Core sender strengen swatchen blev tegnet med — hex for paletten, rgb() for en highlight.
+                    const idx = entries.findIndex(e => shownOf(e) === val);
                     stepIndex.value = idx;
                     emit('update:value', (idx !== -1 && entries[idx].cssVar) ? entries[idx].cssVar : val);
                 };

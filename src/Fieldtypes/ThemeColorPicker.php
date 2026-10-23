@@ -206,6 +206,9 @@ class ThemeColorPicker extends Fieldtype
      * Farverne fra site.css som [{hex, var}], plus de grå trin — eller null når
      * sitet ikke har sine farver dér. Står de i site.css, er det den ene kilde:
      * hverken theme_settings eller dets ugemte Live Preview-udgave bruges.
+     *
+     * Highlights — navne der peger på en palettefarve — kommer sidst, med
+     * `highlight: true`, så en vælger kan give dem deres egen række.
      */
     public static function siteCssSwatches(): ?array
     {
@@ -215,11 +218,19 @@ class ThemeColorPicker extends Fieldtype
             return null;
         }
 
+        $highlights = SiteCssColors::highlights();
         $result = [];
+        $last = [];
 
         foreach ($site as $name => $value) {
             // Paletten viser kun farver den kan tegne og sammenligne: hex.
-            if (preg_match('/^#[0-9a-fA-F]{3,8}$/', $value)) {
+            if (! preg_match('/^#[0-9a-fA-F]{3,8}$/', $value)) {
+                continue;
+            }
+
+            if (in_array($name, $highlights, true)) {
+                $last[] = ['hex' => $value, 'var' => "--{$name}", 'highlight' => true];
+            } else {
                 $result[] = ['hex' => $value, 'var' => "--{$name}"];
             }
         }
@@ -231,7 +242,7 @@ class ThemeColorPicker extends Fieldtype
             }
         }
 
-        return $result;
+        return [...$result, ...$last];
     }
 
     // Returnerer [{hex, var}] — var er CSS-custom-property-navn (fx --primary-500).

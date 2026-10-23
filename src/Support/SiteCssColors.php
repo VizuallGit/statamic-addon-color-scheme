@@ -25,43 +25,50 @@ class SiteCssColors
 
     private const POINTER = '/^var\(\s*--color-([\w-]+)\s*\)$/';
 
-    /** @var array{0: int, 1: array<string, string>}|null */
+    /** @var array{0: int, 1: array<string, string>, 2: list<string>}|null */
     private static ?array $memo = null;
 
     /** @return array<string, string> */
     public static function all(): array
     {
+        return static::read()[1];
+    }
+
+    /**
+     * The names among all() that are highlights — pointers at another color —
+     * so a picker can set them apart from the palette.
+     *
+     * @return list<string>
+     */
+    public static function highlights(): array
+    {
+        return static::read()[2];
+    }
+
+    /** @return array{0: int, 1: array<string, string>, 2: list<string>} */
+    private static function read(): array
+    {
         $path = resource_path('css/site.css');
         $mtime = @filemtime($path);
 
         if ($mtime === false) {
-            return [];
+            return [0, [], []];
         }
 
         if (static::$memo !== null && static::$memo[0] === $mtime) {
-            return static::$memo[1];
+            return static::$memo;
         }
 
-        $colors = static::parse((string) @file_get_contents($path));
-        static::$memo = [$mtime, $colors];
+        $css = (string) @file_get_contents($path);
+        static::$memo = [$mtime, static::parse($css), static::parseHighlights($css)];
 
-        return $colors;
+        return static::$memo;
     }
 
     /** @return array<string, string> */
     public static function parse(string $css): array
     {
-        preg_match_all('/@theme\b[^{]*\{([^}]*)\}/', $css, $blocks);
-
-        $found = [];
-
-        foreach ($blocks[1] as $block) {
-            preg_match_all(self::DECL, $block, $matches, PREG_SET_ORDER);
-
-            foreach ($matches as [, $name, $value]) {
-                $found[$name] = $value;
-            }
-        }
+        $found = static::declarations($css);
 
         // A pointer takes the color it points at; one that points at nothing
         // we have (or at itself, or round in a ring) is left out.
@@ -76,6 +83,43 @@ class SiteCssColors
         }
 
         return $colors;
+    }
+
+    /**
+     * The names in parse($css) that are pointers, in file order.
+     *
+     * @return list<string>
+     */
+    public static function parseHighlights(string $css): array
+    {
+        $found = static::declarations($css);
+        $names = [];
+
+        foreach ($found as $name => $value) {
+            if (preg_match(self::POINTER, $value) && static::follow($name, $found) !== null) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
+    /** @return array<string, string> name => raw value, in file order */
+    private static function declarations(string $css): array
+    {
+        preg_match_all('/@theme\b[^{]*\{([^}]*)\}/', $css, $blocks);
+
+        $found = [];
+
+        foreach ($blocks[1] as $block) {
+            preg_match_all(self::DECL, $block, $matches, PREG_SET_ORDER);
+
+            foreach ($matches as [, $name, $value]) {
+                $found[$name] = $value;
+            }
+        }
+
+        return $found;
     }
 
     /** @param array<string, string> $found */
