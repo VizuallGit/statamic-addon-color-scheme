@@ -393,7 +393,7 @@
         // ---------------------------------------------------------------
 
         const GROUP_STYLE_ID = 'color-scheme-highlight-group';
-        const HIGHLIGHTS_LABEL = 'Highlights';
+        const HIGHLIGHTS_LABEL = 'Highlighted colors';
         const POPOVER = '[data-ui-popover-content]:has(> div > .grid-cols-6 > button)';
         const GRID = '[data-ui-popover-content] .grid-cols-6';
         const COLS = 6;
@@ -401,9 +401,9 @@
         const GAP = '0.5rem';         // core: gap-2
         const PANEL_PAD = '1rem';     // core: p-4 på popoveren
         const PANEL_BORDER = '1px';   // core: border på popoveren (hairline)
-        const PAD = '0.375rem';       // luft inde i boksen
+        const PAD = '0.75rem';        // luft inde i boksen (highlights er PAD/3 mindre end paletten)
         const SPACE = '0.5rem';       // luft mellem palette og boks
-        const LABEL = '1.125rem';     // etikettens linje
+        const LABEL = '1rem';         // etikettens linje
         const HL_SWATCH = `calc(${SWATCH} - ${PAD} / 3)`;
         const GRID_CSS = `${POPOVER} { width: calc(${COLS} * ${SWATCH} + ${COLS - 1} * ${GAP} + 2 * ${PANEL_PAD} + 2 * ${PANEL_BORDER}); }\n`
             + `${GRID} { grid-template-columns: repeat(${COLS}, ${SWATCH}); gap: ${GAP}; }\n`
@@ -430,7 +430,7 @@
                     + `${firstRow} { margin-top: calc(${SPACE} + ${PAD} + ${LABEL}); }\n`
                     + `${lastRow} { margin-bottom: ${PAD}; }\n`
                     + `${first}::before { content: ''; position: absolute; z-index: -1; pointer-events: none; top: ${boxTop}; bottom: 0; left: 0; right: 0; border-radius: 0.625rem; background: currentColor; opacity: 0.07; }\n`
-                    + `${first}::after { content: '${HIGHLIGHTS_LABEL}'; position: absolute; pointer-events: none; top: calc(${boxTop} + ${PAD}); left: ${PAD}; font-size: 0.6875rem; line-height: 1; font-weight: 600; letter-spacing: 0.02em; opacity: 0.6; white-space: nowrap; }`
+                    + `${first}::after { content: '${HIGHLIGHTS_LABEL}'; position: absolute; pointer-events: none; top: calc(${boxTop} + ${PAD}); left: ${PAD}; font-size: 0.625rem; line-height: 1; font-weight: 600; letter-spacing: 0.02em; opacity: 0.6; white-space: nowrap; }`
                 : '');
 
             if (css === lastGroupCss) return;
