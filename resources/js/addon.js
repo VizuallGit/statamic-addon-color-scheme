@@ -377,19 +377,25 @@
         // Serveren sender dem sidst. Core's gitter er `grid grid-cols-6 gap-2`
         // med én knap pr. swatch i rækkefølge, så den første highlight er
         // knap nr. K+1 (K palettefarver): den starter en ny række, og den
-        // række får luft og en streg over sig. Ren CSS på core's egen
-        // markup — læser gitterets seks kolonner og gap-2 (0.5rem).
+        // række får luft, en streg og etiketten "Highlights" over sig. Ren
+        // CSS på core's egen markup — læser gitterets seks kolonner og
+        // gap-2 (0.5rem).
         // ---------------------------------------------------------------
 
         const DIVIDER_STYLE_ID = 'color-scheme-highlight-divider';
+        const HIGHLIGHTS_LABEL = 'Highlights';
         let lastDividerCss = '';
 
         function paintHighlightDivider(entries) {
             const k = entries.findIndex(e => e.highlight);
+            const row = `[data-ui-popover-content] .grid-cols-6 > button:nth-child(n+${k + 1}):nth-child(-n+${k + 6})`;
+            const first = `[data-ui-popover-content] .grid-cols-6 > button:nth-child(${k + 1})`;
+            const across = 'left: 0; width: calc(100% * 6 + 0.5rem * 5); pointer-events: none;';
             const css = k > 0 && entries.slice(k).every(e => e.highlight)
-                ? `[data-ui-popover-content] .grid-cols-6 > button:nth-child(n+${k + 1}):nth-child(-n+${k + 6}) { margin-top: 0.875rem; }\n`
-                    + `[data-ui-popover-content] .grid-cols-6 > button:nth-child(${k + 1}) { grid-column-start: 1; position: relative; }\n`
-                    + `[data-ui-popover-content] .grid-cols-6 > button:nth-child(${k + 1})::before { content: ''; position: absolute; left: 0; top: -0.5rem; width: calc(100% * 6 + 0.5rem * 5); height: 1px; background: currentColor; opacity: 0.18; pointer-events: none; }`
+                ? `${row} { margin-top: 2.25rem; }\n`
+                    + `${first} { grid-column-start: 1; position: relative; }\n`
+                    + `${first}::before { content: ''; position: absolute; top: -1.75rem; height: 1px; background: currentColor; opacity: 0.18; ${across} }\n`
+                    + `${first}::after { content: '${HIGHLIGHTS_LABEL}'; position: absolute; top: -1.25rem; font-size: 0.6875rem; line-height: 1; font-weight: 600; letter-spacing: 0.02em; opacity: 0.6; white-space: nowrap; text-align: left; ${across} }`
                 : '';
 
             if (css === lastDividerCss) return;
