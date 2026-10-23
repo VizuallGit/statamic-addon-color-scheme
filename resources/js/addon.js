@@ -403,7 +403,7 @@
         const PANEL_BORDER = '1px';   // core: border på popoveren (hairline)
         const PAD = '0.75rem';        // luft inde i boksen (highlights er PAD/3 mindre end paletten)
         const SPACE = '0.5rem';       // luft mellem palette og boks
-        const LABEL = '1rem';         // etikettens linje
+        const LABEL = '1.25rem';      // etikettens linje + luft ned til swatches
         const HL_SWATCH = `calc(${SWATCH} - ${PAD} / 3)`;
         const GRID_CSS = `${POPOVER} { width: calc(${COLS} * ${SWATCH} + ${COLS - 1} * ${GAP} + 2 * ${PANEL_PAD} + 2 * ${PANEL_BORDER}); }\n`
             + `${GRID} { grid-template-columns: repeat(${COLS}, ${SWATCH}); gap: ${GAP}; }\n`
