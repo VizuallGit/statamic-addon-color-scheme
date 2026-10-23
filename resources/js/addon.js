@@ -381,18 +381,33 @@
         // første highlights ::before/::after tegner en boks med baggrund og
         // etiketten "Highlights" bag highlight-rækkerne. Ren CSS på core's
         // egen markup — seks kolonner, gap-2 (0.5rem), vores swatch-størrelse.
+        //
+        // Gitteret får faste kolonner på swatch-bredde, så luften er den samme
+        // vandret og lodret, og popoveren krymper til gitteret. Boksen er
+        // præcis så bred som paletten; for at highlights alligevel får PAD
+        // luft til boksens kanter, er de PAD/3 mindre og hver kolonne
+        // forskudt PAD·(3−c)/3 (margin, ikke transform — transform ville
+        // gøre knappen til containing block for boksens pseudo-elementer) —
+        // kolonne 0 rykker PAD ind, kolonne 5 PAD·2/3 tilbage, så rækken
+        // fylder boksen med lige luft i begge ender.
         // ---------------------------------------------------------------
 
         const GROUP_STYLE_ID = 'color-scheme-highlight-group';
         const HIGHLIGHTS_LABEL = 'Highlights';
+        const POPOVER = '[data-ui-popover-content]:has(> div > .grid-cols-6 > button)';
         const GRID = '[data-ui-popover-content] .grid-cols-6';
         const COLS = 6;
-        const SWATCH = '1.875rem'; // core: size-9 (2.25rem) — lidt mindre
-        const GAP = '0.5rem';      // core: gap-2
-        const PAD = '0.5rem';      // luft inde i boksen
-        const SPACE = '0.5rem';    // luft mellem palette og boks
-        const LABEL = '1.125rem';  // etikettens linje
-        const SWATCH_CSS = `${GRID} > button { width: ${SWATCH}; height: ${SWATCH}; }`;
+        const SWATCH = '1.875rem';    // core: size-9 (2.25rem) — lidt mindre
+        const GAP = '0.5rem';         // core: gap-2
+        const PANEL_PAD = '1rem';     // core: p-4 på popoveren
+        const PANEL_BORDER = '1px';   // core: border på popoveren (hairline)
+        const PAD = '0.375rem';       // luft inde i boksen
+        const SPACE = '0.5rem';       // luft mellem palette og boks
+        const LABEL = '1.125rem';     // etikettens linje
+        const HL_SWATCH = `calc(${SWATCH} - ${PAD} / 3)`;
+        const GRID_CSS = `${POPOVER} { width: calc(${COLS} * ${SWATCH} + ${COLS - 1} * ${GAP} + 2 * ${PANEL_PAD} + 2 * ${PANEL_BORDER}); }\n`
+            + `${GRID} { grid-template-columns: repeat(${COLS}, ${SWATCH}); gap: ${GAP}; }\n`
+            + `${GRID} > button { width: ${SWATCH}; height: ${SWATCH}; }`;
         let lastGroupCss = '';
 
         function paintHighlightGroup(entries) {
@@ -402,16 +417,20 @@
             const highlightRows = Math.ceil((entries.length - k) / COLS);
             const lastRowFrom = k + 1 + (highlightRows - 1) * COLS;
             const first = `${GRID} > button:nth-child(${k + 1})`;
+            const all = `${GRID} > button:nth-child(n+${k + 1})`;
             const firstRow = `${GRID} > button:nth-child(n+${k + 1}):nth-child(-n+${k + COLS})`;
             const lastRow = `${GRID} > button:nth-child(n+${lastRowFrom})`;
+            const column = (c) => `${GRID} > button:nth-child(${COLS}n+${k + 1 + c})`;
             const boxTop = `calc(${paletteRows} * (${SWATCH} + ${GAP}) + ${SPACE})`;
-            const css = SWATCH_CSS + (grouped
+            const css = GRID_CSS + (grouped
                 ? `\n${GRID} { position: relative; isolation: isolate; }\n`
                     + `${first} { grid-column-start: 1; }\n`
+                    + `${all} { width: ${HL_SWATCH}; height: ${HL_SWATCH}; }\n`
+                    + Array.from({ length: COLS }, (_, c) => `${column(c)} { margin-left: calc(${PAD} * ${3 - c} / 3); }`).join('\n') + '\n'
                     + `${firstRow} { margin-top: calc(${SPACE} + ${PAD} + ${LABEL}); }\n`
                     + `${lastRow} { margin-bottom: ${PAD}; }\n`
-                    + `${first}::before { content: ''; position: absolute; z-index: -1; pointer-events: none; top: ${boxTop}; bottom: 0; left: calc(-1 * ${PAD}); right: calc(-1 * ${PAD}); border-radius: 0.625rem; background: currentColor; opacity: 0.07; }\n`
-                    + `${first}::after { content: '${HIGHLIGHTS_LABEL}'; position: absolute; pointer-events: none; top: calc(${boxTop} + ${PAD}); left: 0; font-size: 0.6875rem; line-height: 1; font-weight: 600; letter-spacing: 0.02em; opacity: 0.6; white-space: nowrap; }`
+                    + `${first}::before { content: ''; position: absolute; z-index: -1; pointer-events: none; top: ${boxTop}; bottom: 0; left: 0; right: 0; border-radius: 0.625rem; background: currentColor; opacity: 0.07; }\n`
+                    + `${first}::after { content: '${HIGHLIGHTS_LABEL}'; position: absolute; pointer-events: none; top: calc(${boxTop} + ${PAD}); left: ${PAD}; font-size: 0.6875rem; line-height: 1; font-weight: 600; letter-spacing: 0.02em; opacity: 0.6; white-space: nowrap; }`
                 : '');
 
             if (css === lastGroupCss) return;
