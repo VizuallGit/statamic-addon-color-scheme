@@ -373,19 +373,6 @@ function autoContrast(el) {
     if (!measured || measured.alpha === 0) return;
 
     el.style.color = contrastColorFor(el, measured.rgb);
-
-    // Kun sektionen selv. En hover-knap har ikke overskrifter.
-    // Mørk baggrund: overskriften følger den lyse tekst (--heading-color: initial,
-    // så var(--heading-color, inherit) arver). Lys baggrund: highlight bliver.
-    if (!el.hasAttribute('data-auto-contrast')) return;
-
-    const lightText = (measured.rgb[0] * 299 + measured.rgb[1] * 587 + measured.rgb[2] * 114) / 1000 <= 128;
-
-    if (lightText) {
-        el.style.setProperty('--heading-color', 'initial');
-    } else {
-        el.style.removeProperty('--heading-color');
-    }
 }
 
 export function applyAutoContrast(root = document) {
