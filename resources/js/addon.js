@@ -372,45 +372,56 @@
         }
 
         // ---------------------------------------------------------------
-        // Highlights på egen række nederst
+        // Highlights som gruppe nederst
         //
         // Serveren sender dem sidst. Core's gitter er `grid grid-cols-6 gap-2`
         // med én knap pr. swatch i rækkefølge, så den første highlight er
-        // knap nr. K+1 (K palettefarver): den starter en ny række, og den
-        // række får luft, en streg og etiketten "Highlights" over sig. Ren
-        // CSS på core's egen markup — læser gitterets seks kolonner og
-        // gap-2 (0.5rem).
+        // knap nr. K+1 (K palettefarver). Vi kan ikke wrappe dem, men vi
+        // kender rækketallet: gitteret gøres til containing block, og den
+        // første highlights ::before/::after tegner en boks med baggrund og
+        // etiketten "Highlights" bag highlight-rækkerne. Ren CSS på core's
+        // egen markup — seks kolonner, gap-2 (0.5rem), vores swatch-størrelse.
         // ---------------------------------------------------------------
 
-        const DIVIDER_STYLE_ID = 'color-scheme-highlight-divider';
+        const GROUP_STYLE_ID = 'color-scheme-highlight-group';
         const HIGHLIGHTS_LABEL = 'Highlights';
-        let lastDividerCss = '';
+        const GRID = '[data-ui-popover-content] .grid-cols-6';
+        const COLS = 6;
+        const SWATCH = '1.875rem'; // core: size-9 (2.25rem) — lidt mindre
+        const GAP = '0.5rem';      // core: gap-2
+        const PAD = '0.5rem';      // luft inde i boksen
+        const SPACE = '0.5rem';    // luft mellem palette og boks
+        const LABEL = '1.125rem';  // etikettens linje
+        const SWATCH_CSS = `${GRID} > button { width: ${SWATCH}; height: ${SWATCH}; }`;
+        let lastGroupCss = '';
 
-        function paintHighlightDivider(entries) {
+        function paintHighlightGroup(entries) {
             const k = entries.findIndex(e => e.highlight);
-            const row = `[data-ui-popover-content] .grid-cols-6 > button:nth-child(n+${k + 1}):nth-child(-n+${k + 6})`;
-            const first = `[data-ui-popover-content] .grid-cols-6 > button:nth-child(${k + 1})`;
-            const across = 'left: 0; width: calc(100% * 6 + 0.5rem * 5); pointer-events: none;';
-            const css = k > 0 && entries.slice(k).every(e => e.highlight)
-                ? `${row} { margin-top: 2.25rem; }\n`
-                    + `${first} { grid-column-start: 1; position: relative; }\n`
-                    + `${first}::before { content: ''; position: absolute; top: -1.75rem; height: 1px; background: currentColor; opacity: 0.18; ${across} }\n`
-                    + `${first}::after { content: '${HIGHLIGHTS_LABEL}'; position: absolute; top: -1.25rem; font-size: 0.6875rem; line-height: 1; font-weight: 600; letter-spacing: 0.02em; opacity: 0.6; white-space: nowrap; text-align: left; ${across} }`
-                : '';
+            const grouped = k > 0 && entries.slice(k).every(e => e.highlight);
+            const paletteRows = Math.ceil(k / COLS);
+            const highlightRows = Math.ceil((entries.length - k) / COLS);
+            const lastRowFrom = k + 1 + (highlightRows - 1) * COLS;
+            const first = `${GRID} > button:nth-child(${k + 1})`;
+            const firstRow = `${GRID} > button:nth-child(n+${k + 1}):nth-child(-n+${k + COLS})`;
+            const lastRow = `${GRID} > button:nth-child(n+${lastRowFrom})`;
+            const boxTop = `calc(${paletteRows} * (${SWATCH} + ${GAP}) + ${SPACE})`;
+            const css = SWATCH_CSS + (grouped
+                ? `\n${GRID} { position: relative; isolation: isolate; }\n`
+                    + `${first} { grid-column-start: 1; }\n`
+                    + `${firstRow} { margin-top: calc(${SPACE} + ${PAD} + ${LABEL}); }\n`
+                    + `${lastRow} { margin-bottom: ${PAD}; }\n`
+                    + `${first}::before { content: ''; position: absolute; z-index: -1; pointer-events: none; top: ${boxTop}; bottom: 0; left: calc(-1 * ${PAD}); right: calc(-1 * ${PAD}); border-radius: 0.625rem; background: currentColor; opacity: 0.07; }\n`
+                    + `${first}::after { content: '${HIGHLIGHTS_LABEL}'; position: absolute; pointer-events: none; top: calc(${boxTop} + ${PAD}); left: 0; font-size: 0.6875rem; line-height: 1; font-weight: 600; letter-spacing: 0.02em; opacity: 0.6; white-space: nowrap; }`
+                : '');
 
-            if (css === lastDividerCss) return;
-            lastDividerCss = css;
+            if (css === lastGroupCss) return;
+            lastGroupCss = css;
 
-            let el = document.getElementById(DIVIDER_STYLE_ID);
-
-            if (!css) {
-                el?.remove();
-                return;
-            }
+            let el = document.getElementById(GROUP_STYLE_ID);
 
             if (!el) {
                 el = document.createElement('style');
-                el.id = DIVIDER_STYLE_ID;
+                el.id = GROUP_STYLE_ID;
                 document.head.appendChild(el);
             }
 
@@ -508,10 +519,10 @@
                     if (idx !== -1) stepIndex.value = idx;
                 }, { immediate: true });
 
-                // Fluebenets farve følger paletten; highlights står på egen række.
+                // Fluebenets farve følger paletten; highlights står som gruppe nederst.
                 watch(swatchEntries, (entries) => {
                     paintCheckContrast(entries);
-                    paintHighlightDivider(entries);
+                    paintHighlightGroup(entries);
                 }, { immediate: true });
 
                 // Opgradér gamle hex-snapshots til CSS-var, når de matcher en swatch.
