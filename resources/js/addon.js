@@ -306,15 +306,18 @@
         // fil. Efter et gem er hentningen vi holder på en palette, der ikke
         // findes længere — smid den væk, så den næste henter de gemte farver.
         // Uden det var en genindlæsning af hele CP'et den eneste vej.
+        //
+        // Kun på vores eget vindue. Ligger CP'et i en ramme (overlayet,
+        // globals-panelet), sender Visual Editor hændelsen ned til rammen
+        // (lib/site-css-saved.js). En lytter på window.parent eller window.top
+        // bliver aldrig taget af igen, og siden ovenover holder så hele denne
+        // ramme i hukommelsen, efter at den er fjernet: én Live Preview for
+        // hver gang, den var blevet lukket.
         function forgetSwatchEntries() {
             swatchEntriesPromise = null;
         }
 
-        eventTargets().forEach((w) => {
-            try {
-                w.addEventListener('sve:site-css-saved', forgetSwatchEntries);
-            } catch { /* ignore */ }
-        });
+        window.addEventListener('sve:site-css-saved', forgetSwatchEntries);
 
         // ---------------------------------------------------------------
         // Fluebenet i paletten
@@ -512,21 +515,15 @@
                     // Tema-panelet har gemt site.css. Modulets egen lytter er
                     // sat før nogen feltinstans, så den gamle hentning er
                     // allerede glemt her — vi henter bare paletten igen.
+                    // Eget vindue, som modulets lytter ovenfor: når en ramme
+                    // fjernes, bliver feltet ikke afmonteret, så en lytter på
+                    // siden ovenover ville blive hængende.
                     const onCssSaved = () => { void refreshRemoteSwatches(); };
-                    const targets = eventTargets();
-                    targets.forEach((w) => {
-                        try {
-                            w.addEventListener('sve:site-css-saved', onCssSaved);
-                        } catch { /* ignore */ }
-                    });
+                    window.addEventListener('sve:site-css-saved', onCssSaved);
 
                     onUnmounted(() => {
                         window.removeEventListener('sve-theme-colors', onTheme);
-                        targets.forEach((w) => {
-                            try {
-                                w.removeEventListener('sve:site-css-saved', onCssSaved);
-                            } catch { /* ignore */ }
-                        });
+                        window.removeEventListener('sve:site-css-saved', onCssSaved);
                     });
                 });
 
